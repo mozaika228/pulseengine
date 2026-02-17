@@ -1,0 +1,28 @@
+# Java
+*.class
+*/target/
+
+# Maven
+*.jar
+*.war
+*.ear
+*/maven-*/
+
+# IDE Configurations
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# VS Code
+.vscode/
+
+# JMH generated files
+.jmh/
+
+# JFR flight records
+.jfr
