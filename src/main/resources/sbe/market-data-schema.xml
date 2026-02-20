@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="io.pulseengine.sbe"
+                   id="777"
+                   version="0"
+                   semanticVersion="1.0.0"
+                   byteOrder="littleEndian">
+
+    <types>
+        <composite name="messageHeader" description="SBE message header">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+        <composite name="groupSizeEncoding">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="numInGroup" primitiveType="uint16"/>
+        </composite>
+        <enum name="bookSide" encodingType="uint8">
+            <validValue name="Bid">0</validValue>
+            <validValue name="Ask">1</validValue>
+        </enum>
+        <enum name="l3EventType" encodingType="uint8">
+            <validValue name="Add">1</validValue>
+            <validValue name="Modify">2</validValue>
+            <validValue name="Cancel">3</validValue>
+            <validValue name="Trade">4</validValue>
+        </enum>
+    </types>
+
+    <message name="MdL2Snapshot" id="1" description="L2 top-of-book snapshot">
+        <field name="seq" id="1" type="uint64"/>
+        <field name="tsNanos" id="2" type="uint64"/>
+        <field name="bidPx" id="3" type="uint64"/>
+        <field name="bidQty" id="4" type="uint64"/>
+        <field name="askPx" id="5" type="uint64"/>
+        <field name="askQty" id="6" type="uint64"/>
+    </message>
+
+    <message name="MdL2Incremental" id="2" description="L2 top-of-book incremental update">
+        <field name="seq" id="1" type="uint64"/>
+        <field name="tsNanos" id="2" type="uint64"/>
+        <field name="bidPx" id="3" type="uint64"/>
+        <field name="bidQty" id="4" type="uint64"/>
+        <field name="askPx" id="5" type="uint64"/>
+        <field name="askQty" id="6" type="uint64"/>
+    </message>
+
+    <message name="MdL2DepthSnapshot" id="3" description="L2 depth snapshot with top N levels">
+        <field name="seq" id="1" type="uint64"/>
+        <field name="tsNanos" id="2" type="uint64"/>
+        <group name="levels" id="3" dimensionType="groupSizeEncoding">
+            <field name="side" id="1" type="bookSide"/>
+            <field name="price" id="2" type="uint64"/>
+            <field name="quantity" id="3" type="uint64"/>
+        </group>
+    </message>
+
+    <message name="MdL3Incremental" id="4" description="L3 order lifecycle delta">
+        <field name="seq" id="1" type="uint64"/>
+        <field name="tsNanos" id="2" type="uint64"/>
+        <field name="eventType" id="3" type="l3EventType"/>
+        <field name="orderId" id="4" type="uint64"/>
+        <field name="tradeId" id="5" type="uint64"/>
+        <field name="side" id="6" type="bookSide"/>
+        <field name="price" id="7" type="uint64"/>
+        <field name="quantity" id="8" type="uint64"/>
+        <field name="remainingQty" id="9" type="uint64"/>
+    </message>
+</sbe:messageSchema>
