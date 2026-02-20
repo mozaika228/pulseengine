@@ -33,6 +33,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - binary feed demo with decoder (`BinaryFeedDemo`)
 - Aeron IPC transport demo (`AeronIpcDemo`) for order ingress and market-data dissemination
 - append-only command journal and replay utility (`JournalReplayDemo`)
+- journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 
 ## Run
 - `mvn -q -DskipTests=false verify`
@@ -41,6 +42,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - PowerShell (SBE/Agrona runtime): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.BinaryFeedDemo"`
 - PowerShell (Aeron IPC): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronIpcDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
+- `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalRecoveryTool" "-Dexec.args=verify target/orders.journal.bin"`
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
@@ -63,5 +65,5 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## Not yet HFT-final
 - UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
-- persistence/replay is file-journal based and still lacks snapshotting + checksum + recovery tooling
+- persistence/replay has file-journal + CRC/recovery, but still lacks full state snapshotting and fast state restore
 - still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)

@@ -4,8 +4,13 @@ import io.pulseengine.core.OrderType;
 import io.pulseengine.core.Side;
 import io.pulseengine.core.TimeInForce;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.zip.CRC32;
+
 final class JournalCodec {
     static final int RECORD_LENGTH = 96;
+    static final int MAGIC = 0x50454A31; // PEJ1
 
     static final byte TYPE_NEW = 1;
     static final byte TYPE_CANCEL = 2;
@@ -15,6 +20,7 @@ final class JournalCodec {
     private static final int OFF_ORDER_TYPE = 2;
     private static final int OFF_TIF = 3;
 
+    private static final int OFF_MAGIC = 4;
     private static final int OFF_TS = 8;
     private static final int OFF_ORDER_ID = 16;
     private static final int OFF_TRADER_ID = 24;
@@ -24,7 +30,35 @@ final class JournalCodec {
     private static final int OFF_PEAK = 56;
     private static final int OFF_CANCEL_ORDER_ID = 64;
 
+    private static final int OFF_CHECKSUM = 88;
+
     private JournalCodec() {
+    }
+
+    static void initializeRecord(ByteBuffer buffer) {
+        buffer.putInt(OFF_MAGIC, MAGIC);
+    }
+
+    static void writeChecksum(byte[] record) {
+        int checksum = computeChecksum(record);
+        ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).putInt(OFF_CHECKSUM, checksum);
+    }
+
+    static boolean validateChecksum(byte[] record) {
+        int stored = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getInt(OFF_CHECKSUM);
+        return stored == computeChecksum(record);
+    }
+
+    static boolean validateMagic(byte[] record) {
+        int magic = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getInt(OFF_MAGIC);
+        return magic == MAGIC;
+    }
+
+    private static int computeChecksum(byte[] record) {
+        CRC32 crc32 = new CRC32();
+        crc32.update(record, 0, OFF_CHECKSUM);
+        crc32.update(record, OFF_CHECKSUM + 4, RECORD_LENGTH - (OFF_CHECKSUM + 4));
+        return (int) crc32.getValue();
     }
 
     static byte mapSide(Side side) {

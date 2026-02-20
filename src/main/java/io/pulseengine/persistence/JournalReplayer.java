@@ -18,6 +18,7 @@ public final class JournalReplayer {
 
     public static long replay(Path path, EnginePipeline engine) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(JournalCodec.RECORD_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
+        byte[] record = new byte[JournalCodec.RECORD_LENGTH];
         long replayed = 0;
 
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
@@ -35,19 +36,28 @@ public final class JournalReplayer {
                     bytes += read;
                 }
 
-                byte recordType = buffer.get(JournalCodec.offRecordType());
-                long ts = buffer.getLong(JournalCodec.offTs());
+                buffer.flip();
+                buffer.get(record);
+                if (!JournalCodec.validateMagic(record)) {
+                    throw new IllegalStateException("Corrupt journal: bad magic at record=" + replayed);
+                }
+                if (!JournalCodec.validateChecksum(record)) {
+                    throw new IllegalStateException("Corrupt journal: bad checksum at record=" + replayed);
+                }
+
+                byte recordType = record[JournalCodec.offRecordType()];
+                long ts = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offTs());
 
                 if (recordType == JournalCodec.TYPE_NEW) {
-                    long orderId = buffer.getLong(JournalCodec.offOrderId());
-                    long traderId = buffer.getLong(JournalCodec.offTraderId());
-                    Side side = JournalCodec.unmapSide(buffer.get(JournalCodec.offSide()));
-                    OrderType type = JournalCodec.unmapOrderType(buffer.get(JournalCodec.offOrderType()));
-                    TimeInForce tif = JournalCodec.unmapTif(buffer.get(JournalCodec.offTif()));
-                    long price = buffer.getLong(JournalCodec.offPrice());
-                    long stopPrice = buffer.getLong(JournalCodec.offStopPrice());
-                    long quantity = buffer.getLong(JournalCodec.offQuantity());
-                    long peak = buffer.getLong(JournalCodec.offPeak());
+                    long orderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offOrderId());
+                    long traderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offTraderId());
+                    Side side = JournalCodec.unmapSide(record[JournalCodec.offSide()]);
+                    OrderType type = JournalCodec.unmapOrderType(record[JournalCodec.offOrderType()]);
+                    TimeInForce tif = JournalCodec.unmapTif(record[JournalCodec.offTif()]);
+                    long price = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offPrice());
+                    long stopPrice = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offStopPrice());
+                    long quantity = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offQuantity());
+                    long peak = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offPeak());
 
                     switch (type) {
                         case LIMIT -> engine.submitLimitAt(orderId, traderId, side, price, quantity, tif, peak, ts);
@@ -55,7 +65,7 @@ public final class JournalReplayer {
                         case STOP_MARKET -> engine.submitStopMarketAt(orderId, traderId, side, stopPrice, quantity, ts);
                     }
                 } else if (recordType == JournalCodec.TYPE_CANCEL) {
-                    long cancelOrderId = buffer.getLong(JournalCodec.offCancelOrderId());
+                    long cancelOrderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offCancelOrderId());
                     engine.submitCancelAt(cancelOrderId, ts);
                 }
                 replayed++;

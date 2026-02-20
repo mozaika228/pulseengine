@@ -10,10 +10,12 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 public final class FileCommandJournal implements CommandJournal {
     private final FileChannel channel;
-    private final ByteBuffer buffer = ByteBuffer.allocateDirect(JournalCodec.RECORD_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
+    private final byte[] record = new byte[JournalCodec.RECORD_LENGTH];
+    private final ByteBuffer buffer = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN);
     private final boolean forceOnWrite;
 
     public FileCommandJournal(Path path, boolean forceOnWrite) {
@@ -43,7 +45,7 @@ public final class FileCommandJournal implements CommandJournal {
         long quantity,
         long peak
     ) {
-        buffer.clear();
+        resetRecord();
         buffer.put(JournalCodec.offRecordType(), JournalCodec.TYPE_NEW);
         buffer.put(JournalCodec.offSide(), JournalCodec.mapSide(side));
         buffer.put(JournalCodec.offOrderType(), JournalCodec.mapOrderType(orderType));
@@ -62,7 +64,7 @@ public final class FileCommandJournal implements CommandJournal {
 
     @Override
     public synchronized void appendCancel(long tsNanos, long cancelOrderId) {
-        buffer.clear();
+        resetRecord();
         buffer.put(JournalCodec.offRecordType(), JournalCodec.TYPE_CANCEL);
         buffer.putLong(JournalCodec.offTs(), tsNanos);
         buffer.putLong(JournalCodec.offCancelOrderId(), cancelOrderId);
@@ -70,11 +72,17 @@ public final class FileCommandJournal implements CommandJournal {
         writeRecord();
     }
 
+    private void resetRecord() {
+        Arrays.fill(record, (byte) 0);
+        JournalCodec.initializeRecord(buffer);
+    }
+
     private void writeRecord() {
         try {
-            buffer.position(0).limit(JournalCodec.RECORD_LENGTH);
-            while (buffer.hasRemaining()) {
-                channel.write(buffer);
+            JournalCodec.writeChecksum(record);
+            ByteBuffer write = ByteBuffer.wrap(record);
+            while (write.hasRemaining()) {
+                channel.write(write);
             }
             if (forceOnWrite) {
                 channel.force(false);
