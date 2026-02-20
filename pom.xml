@@ -11,6 +11,7 @@
         <jmh.version>1.37</jmh.version>
         <sbe.version>1.33.0</sbe.version>
         <junit.version>5.11.4</junit.version>
+        <aeron.version>1.47.4</aeron.version>
     </properties>
 
     <dependencies>
@@ -28,6 +29,11 @@
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
             <version>2.2.2</version>
+        </dependency>
+        <dependency>
+            <groupId>io.aeron</groupId>
+            <artifactId>aeron-all</artifactId>
+            <version>${aeron.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjdk.jmh</groupId>

@@ -4,6 +4,7 @@ import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.EventFactory;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.EventTranslatorOneArg;
+import com.lmax.disruptor.InsufficientCapacityException;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
@@ -11,6 +12,7 @@ import io.pulseengine.core.MatchEventSink;
 import io.pulseengine.core.OrderBook;
 import io.pulseengine.core.OrderRequest;
 import io.pulseengine.core.OrderType;
+import io.pulseengine.core.RejectCode;
 import io.pulseengine.core.Side;
 import io.pulseengine.core.SmpPolicy;
 import io.pulseengine.core.TimeInForce;
@@ -21,12 +23,9 @@ import io.pulseengine.md.TopOfBookView;
 import java.util.concurrent.ThreadFactory;
 
 public final class EnginePipeline implements AutoCloseable {
-    private static final String REJECT_INVALID_ORDER = "invalid_order";
-    private static final String REJECT_UNKNOWN_CANCEL = "unknown_cancel";
-
-    private static final byte RC_INVALID_QTY = 1;
-    private static final byte RC_INVALID_SIDE = 2;
-    private static final byte RC_INVALID_ORDER_TYPE = 3;
+    private static final byte RC_INVALID_QTY = RejectCode.INVALID_QTY;
+    private static final byte RC_INVALID_SIDE = RejectCode.INVALID_ORDER;
+    private static final byte RC_INVALID_ORDER_TYPE = RejectCode.INVALID_ORDER;
 
     private static final EventTranslatorOneArg<MdEvent, EngineEvent> MD_TRANSLATOR = (event, sequence, src) -> {
         event.tsNanos = src.ingressNanos;
@@ -110,6 +109,23 @@ public final class EnginePipeline implements AutoCloseable {
     }
 
     public void submitLimit(long orderId, long traderId, Side side, long priceTicks, long quantity, TimeInForce tif, long peakSize) {
+        submitLimitAt(orderId, traderId, side, priceTicks, quantity, tif, peakSize, System.nanoTime());
+    }
+
+    public boolean trySubmitLimit(long orderId, long traderId, Side side, long priceTicks, long quantity, TimeInForce tif, long peakSize) {
+        return trySubmitLimitAt(orderId, traderId, side, priceTicks, quantity, tif, peakSize, System.nanoTime());
+    }
+
+    public void submitLimitAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long priceTicks,
+        long quantity,
+        TimeInForce tif,
+        long peakSize,
+        long ingressNanos
+    ) {
         long seq = coreRing.next();
         try {
             EngineEvent e = coreRing.get(seq);
@@ -122,13 +138,62 @@ public final class EnginePipeline implements AutoCloseable {
             e.priceTicks = priceTicks;
             e.quantity = quantity;
             e.peakSize = peakSize;
-            e.ingressNanos = System.nanoTime();
+            e.ingressNanos = ingressNanos;
         } finally {
             coreRing.publish(seq);
         }
     }
 
+    public boolean trySubmitLimitAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long priceTicks,
+        long quantity,
+        TimeInForce tif,
+        long peakSize,
+        long ingressNanos
+    ) {
+        final long seq;
+        try {
+            seq = coreRing.tryNext();
+        } catch (InsufficientCapacityException e) {
+            return false;
+        }
+        try {
+            EngineEvent ev = coreRing.get(seq);
+            ev.commandType = EngineCommandType.NEW_ORDER;
+            ev.orderId = orderId;
+            ev.traderId = traderId;
+            ev.side = side;
+            ev.orderType = OrderType.LIMIT;
+            ev.tif = tif;
+            ev.priceTicks = priceTicks;
+            ev.quantity = quantity;
+            ev.peakSize = peakSize;
+            ev.ingressNanos = ingressNanos;
+        } finally {
+            coreRing.publish(seq);
+        }
+        return true;
+    }
+
     public void submitMarket(long orderId, long traderId, Side side, long quantity, TimeInForce tif) {
+        submitMarketAt(orderId, traderId, side, quantity, tif, System.nanoTime());
+    }
+
+    public boolean trySubmitMarket(long orderId, long traderId, Side side, long quantity, TimeInForce tif) {
+        return trySubmitMarketAt(orderId, traderId, side, quantity, tif, System.nanoTime());
+    }
+
+    public void submitMarketAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long quantity,
+        TimeInForce tif,
+        long ingressNanos
+    ) {
         long seq = coreRing.next();
         try {
             EngineEvent e = coreRing.get(seq);
@@ -139,13 +204,58 @@ public final class EnginePipeline implements AutoCloseable {
             e.orderType = OrderType.MARKET;
             e.tif = tif;
             e.quantity = quantity;
-            e.ingressNanos = System.nanoTime();
+            e.ingressNanos = ingressNanos;
         } finally {
             coreRing.publish(seq);
         }
     }
 
+    public boolean trySubmitMarketAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long quantity,
+        TimeInForce tif,
+        long ingressNanos
+    ) {
+        final long seq;
+        try {
+            seq = coreRing.tryNext();
+        } catch (InsufficientCapacityException e) {
+            return false;
+        }
+        try {
+            EngineEvent ev = coreRing.get(seq);
+            ev.commandType = EngineCommandType.NEW_ORDER;
+            ev.orderId = orderId;
+            ev.traderId = traderId;
+            ev.side = side;
+            ev.orderType = OrderType.MARKET;
+            ev.tif = tif;
+            ev.quantity = quantity;
+            ev.ingressNanos = ingressNanos;
+        } finally {
+            coreRing.publish(seq);
+        }
+        return true;
+    }
+
     public void submitStopMarket(long orderId, long traderId, Side side, long stopPriceTicks, long quantity) {
+        submitStopMarketAt(orderId, traderId, side, stopPriceTicks, quantity, System.nanoTime());
+    }
+
+    public boolean trySubmitStopMarket(long orderId, long traderId, Side side, long stopPriceTicks, long quantity) {
+        return trySubmitStopMarketAt(orderId, traderId, side, stopPriceTicks, quantity, System.nanoTime());
+    }
+
+    public void submitStopMarketAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long stopPriceTicks,
+        long quantity,
+        long ingressNanos
+    ) {
         long seq = coreRing.next();
         try {
             EngineEvent e = coreRing.get(seq);
@@ -157,22 +267,79 @@ public final class EnginePipeline implements AutoCloseable {
             e.tif = TimeInForce.GTC;
             e.stopPriceTicks = stopPriceTicks;
             e.quantity = quantity;
-            e.ingressNanos = System.nanoTime();
+            e.ingressNanos = ingressNanos;
         } finally {
             coreRing.publish(seq);
         }
     }
 
+    public boolean trySubmitStopMarketAt(
+        long orderId,
+        long traderId,
+        Side side,
+        long stopPriceTicks,
+        long quantity,
+        long ingressNanos
+    ) {
+        final long seq;
+        try {
+            seq = coreRing.tryNext();
+        } catch (InsufficientCapacityException e) {
+            return false;
+        }
+        try {
+            EngineEvent ev = coreRing.get(seq);
+            ev.commandType = EngineCommandType.NEW_ORDER;
+            ev.orderId = orderId;
+            ev.traderId = traderId;
+            ev.side = side;
+            ev.orderType = OrderType.STOP_MARKET;
+            ev.tif = TimeInForce.GTC;
+            ev.stopPriceTicks = stopPriceTicks;
+            ev.quantity = quantity;
+            ev.ingressNanos = ingressNanos;
+        } finally {
+            coreRing.publish(seq);
+        }
+        return true;
+    }
+
     public void submitCancel(long cancelOrderId) {
+        submitCancelAt(cancelOrderId, System.nanoTime());
+    }
+
+    public boolean trySubmitCancel(long cancelOrderId) {
+        return trySubmitCancelAt(cancelOrderId, System.nanoTime());
+    }
+
+    public void submitCancelAt(long cancelOrderId, long ingressNanos) {
         long seq = coreRing.next();
         try {
             EngineEvent e = coreRing.get(seq);
             e.commandType = EngineCommandType.CANCEL;
             e.cancelOrderId = cancelOrderId;
-            e.ingressNanos = System.nanoTime();
+            e.ingressNanos = ingressNanos;
         } finally {
             coreRing.publish(seq);
         }
+    }
+
+    public boolean trySubmitCancelAt(long cancelOrderId, long ingressNanos) {
+        final long seq;
+        try {
+            seq = coreRing.tryNext();
+        } catch (InsufficientCapacityException e) {
+            return false;
+        }
+        try {
+            EngineEvent ev = coreRing.get(seq);
+            ev.commandType = EngineCommandType.CANCEL;
+            ev.cancelOrderId = cancelOrderId;
+            ev.ingressNanos = ingressNanos;
+        } finally {
+            coreRing.publish(seq);
+        }
+        return true;
     }
 
     public TopOfBookView topOfBook() {
@@ -250,7 +417,7 @@ public final class EnginePipeline implements AutoCloseable {
         @Override
         public void onEvent(EngineEvent event, long sequence, boolean endOfBatch) {
             if (event.rejected) {
-                sink.onOrderRejected(event.orderId, reasonText(event.rejectCode), event.ingressNanos);
+                sink.onOrderRejected(event.orderId, event.rejectCode, event.ingressNanos);
                 event.l3EventType = 0;
                 captureBookState(event);
                 publishMd(event);
@@ -262,7 +429,7 @@ public final class EnginePipeline implements AutoCloseable {
                 recordingSink.attach(event, sink);
                 boolean canceled = orderBook.cancel(event.cancelOrderId, recordingSink, event.ingressNanos);
                 if (!canceled) {
-                    sink.onOrderRejected(event.cancelOrderId, REJECT_UNKNOWN_CANCEL, event.ingressNanos);
+                    sink.onOrderRejected(event.cancelOrderId, RejectCode.UNKNOWN_CANCEL, event.ingressNanos);
                     event.l3EventType = 0;
                 }
                 captureBookState(event);
@@ -295,13 +462,6 @@ public final class EnginePipeline implements AutoCloseable {
             } else {
                 topOfBook.publish(event.postBidPx, event.postAskPx);
             }
-        }
-
-        private static String reasonText(byte code) {
-            if (code == RC_INVALID_QTY || code == RC_INVALID_SIDE || code == RC_INVALID_ORDER_TYPE) {
-                return REJECT_INVALID_ORDER;
-            }
-            return REJECT_INVALID_ORDER;
         }
 
         private void captureBookState(EngineEvent event) {
@@ -346,8 +506,8 @@ public final class EnginePipeline implements AutoCloseable {
             }
 
             @Override
-            public void onOrderRejected(long orderId, String reason, long tsNanos) {
-                downstream.onOrderRejected(orderId, reason, tsNanos);
+            public void onOrderRejected(long orderId, byte reasonCode, long tsNanos) {
+                downstream.onOrderRejected(orderId, reasonCode, tsNanos);
             }
 
             @Override

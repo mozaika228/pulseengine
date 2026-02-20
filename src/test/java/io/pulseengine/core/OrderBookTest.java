@@ -37,7 +37,7 @@ class OrderBookTest {
         book.process(OrderRequest.limit(10, 500, Side.SELL, 50_100, 3, TimeInForce.GTC), sink, SmpPolicy.NONE, 1);
         book.process(OrderRequest.limit(11, 501, Side.BUY, 50_100, 4, TimeInForce.FOK), sink, SmpPolicy.NONE, 2);
 
-        assertTrue(sink.rejections.contains("reject:11:FOK_unfilled"));
+        assertTrue(sink.rejections.contains("reject:11:" + RejectCode.FOK_UNFILLED));
         assertEquals(50_100, book.bestAsk());
         assertEquals(3, book.bestAskQty());
     }
@@ -94,8 +94,8 @@ class OrderBookTest {
         }
 
         @Override
-        public void onOrderRejected(long orderId, String reason, long tsNanos) {
-            rejections.add("reject:" + orderId + ":" + reason);
+        public void onOrderRejected(long orderId, byte reasonCode, long tsNanos) {
+            rejections.add("reject:" + orderId + ":" + reasonCode);
         }
 
         @Override

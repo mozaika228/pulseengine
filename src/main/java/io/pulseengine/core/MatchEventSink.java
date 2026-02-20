@@ -5,7 +5,7 @@ public interface MatchEventSink {
 
     void onOrderAccepted(long orderId, long openQty, long tsNanos);
 
-    void onOrderRejected(long orderId, String reason, long tsNanos);
+    void onOrderRejected(long orderId, byte reasonCode, long tsNanos);
 
     void onOrderCanceled(long orderId, long remainingQty, long tsNanos);
 

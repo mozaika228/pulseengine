@@ -99,8 +99,8 @@ public final class BinaryFeedDemo {
         }
 
         @Override
-        public void onOrderRejected(long orderId, String reason, long tsNanos) {
-            consumed ^= orderId ^ tsNanos ^ reason.length();
+        public void onOrderRejected(long orderId, byte reasonCode, long tsNanos) {
+            consumed ^= orderId ^ tsNanos ^ reasonCode;
         }
 
         @Override

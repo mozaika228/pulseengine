@@ -21,6 +21,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - order/stop object pooling in matching core (lower GC pressure)
 - staged pipeline: `risk -> match -> market-data` on LMAX Disruptor
 - market data can run async on a dedicated ring/thread (`match -> md`) with L2 batching per batch boundary
+- non-blocking submit APIs are available (`trySubmit*`) to support wait-free/backpressure-aware ingress
 - top-of-book view (`TopOfBookView`) updated by market-data stage
 - binary market-data publisher (SBE schema-driven):
   - snapshot L2 message
@@ -30,12 +31,16 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - latency harness (`LatencyHarness`)
 - throughput demo (`PipelineDemo`)
 - binary feed demo with decoder (`BinaryFeedDemo`)
+- Aeron IPC transport demo (`AeronIpcDemo`) for order ingress and market-data dissemination
+- append-only command journal and replay utility (`JournalReplayDemo`)
 
 ## Run
 - `mvn -q -DskipTests=false verify`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.LatencyHarness"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.PipelineDemo"`
 - PowerShell (SBE/Agrona runtime): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.BinaryFeedDemo"`
+- PowerShell (Aeron IPC): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronIpcDemo"`
+- `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
@@ -57,6 +62,6 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - License: `LICENSE`
 
 ## Not yet HFT-final
-- no Aeron/UDP transport
-- no persistence/replay
-- still not fully wait-free/garbage-free in all paths
+- UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
+- persistence/replay is file-journal based and still lacks snapshotting + checksum + recovery tooling
+- still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)

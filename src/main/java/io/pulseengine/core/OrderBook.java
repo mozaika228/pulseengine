@@ -23,7 +23,7 @@ public final class OrderBook {
 
     public void process(OrderRequest req, MatchEventSink sink, SmpPolicy smpPolicy, long tsNanos) {
         if (req.quantity <= 0) {
-            sink.onOrderRejected(req.orderId, "qty<=0", tsNanos);
+            sink.onOrderRejected(req.orderId, RejectCode.INVALID_QTY, tsNanos);
             return;
         }
 
@@ -37,7 +37,7 @@ public final class OrderBook {
             : req.priceTicks;
 
         if (req.tif == TimeInForce.FOK && !canFullyFill(req.side, req.type, effectivePrice, req.quantity)) {
-            sink.onOrderRejected(req.orderId, "FOK_unfilled", tsNanos);
+            sink.onOrderRejected(req.orderId, RejectCode.FOK_UNFILLED, tsNanos);
             return;
         }
 
