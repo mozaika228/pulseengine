@@ -10,6 +10,9 @@ and this project follows Semantic Versioning.
 - Full order-book state snapshot store with CRC32 and fast restore support.
 - Engine-level snapshot APIs: `saveStateSnapshot` and `loadStateSnapshot`.
 - Snapshot integrity unit tests.
+- JNI + C++ prototype for matching hot path (`insertLimitOrder`, `matchMarketOrder`, `publishL2Update`).
+- Native ingress adapter and demo for integrating JNI core with Java top-of-book updates.
+- JMH benchmark scaffold for Java vs JNI hot-path comparisons.
 
 ## [0.2.0] - 2026-02-20
 ### Added

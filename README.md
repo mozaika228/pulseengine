@@ -35,6 +35,8 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 - full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
+- JNI bridge skeleton for native C++ matching hot path (`NativeMatchingEngine`)
+- JNI ingress adapter for Java pipeline integration (`NativeIngressAdapter`)
 
 ## Run
 - `mvn -q -DskipTests=false verify`
@@ -44,6 +46,23 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - PowerShell (Aeron IPC): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronIpcDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalRecoveryTool" "-Dexec.args=verify target/orders.journal.bin"`
+
+## JNI C++ experiment
+- Java wrapper: `src/main/java/io/pulseengine/jni/NativeMatchingEngine.java`
+- Native code: `cpp/src/pulseengine_native.cpp`
+- CMake project: `cpp/CMakeLists.txt`
+- Build example (PowerShell):
+  - `cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release`
+  - `cmake --build cpp/build --config Release`
+- Runtime:
+  - place `pulseengine_native.dll`/`libpulseengine_native.so` on `java.library.path`
+  - use `io.pulseengine.jni.NativeMatchingEngine` in the Java pipeline ingress/hot path
+- Integration demo:
+  - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativePipelineDemo"`
+  - pass `-Djava.library.path=<path-to-native-lib>` to JVM if required
+- Java vs JNI benchmark:
+  - `mvn -q -DskipTests test-compile`
+  - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=test" "-Dexec.mainClass=org.openjdk.jmh.Main" "-Dexec.args=NativeVsJavaBenchmark.* -wi 3 -i 5 -f 0 -tu ns"`
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
@@ -68,3 +87,4 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
 - persistence/replay has file-journal + CRC/recovery + full snapshot/restore, but still lacks journal+snapshot coordinated incremental catch-up tooling
 - still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)
+- JNI prototype still uses `std::map`/`std::list`; not yet cache-optimal contiguous book layout
