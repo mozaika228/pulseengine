@@ -29,6 +29,7 @@ and this project follows Semantic Versioning.
 - Added JNI ABI compatibility test coverage (`NativeAbiCompatibilityTest`).
 - Added randomized parity fuzz test for Java vs native matching on shared command subset (`NativeParityFuzzTest`).
 - Added long-run parity soak harness (`NativeParitySoakTool`) for 6h+ drift detection.
+- Added restart parity coverage for coordinated recovery (`snapshot + catch-up + restart + re-snapshot + second restart`).
 
 ## [0.2.0] - 2026-02-20
 ### Added
