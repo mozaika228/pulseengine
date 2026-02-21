@@ -1,6 +1,6 @@
 package io.pulseengine.app;
 
-import io.pulseengine.jni.NativeMatchingEngine;
+import io.pulseengine.jni.NativeOrderBook;
 import io.pulseengine.md.TopOfBookView;
 import io.pulseengine.pipeline.NativeIngressAdapter;
 
@@ -14,8 +14,8 @@ public final class NativePipelineDemo {
             nativeIngress.insertLimitOrder(1, 49_900, 10, true);
             nativeIngress.insertLimitOrder(2, 50_100, 15, false);
 
-            NativeMatchingEngine.MatchResult result = nativeIngress.matchMarketOrder(3, 7, true);
-            NativeMatchingEngine.L2Update l2 = nativeIngress.publishL2Update();
+            NativeOrderBook.MatchResult result = nativeIngress.matchMarketOrder(3, 7, true);
+            NativeOrderBook.L2Update l2 = nativeIngress.publishL2Update();
 
             System.out.println("filled=" + result.filledQty + " remaining=" + result.remainingQty + " trades=" + result.trades);
             System.out.println("bestBid=" + l2.bestBid + " bestAsk=" + l2.bestAsk);

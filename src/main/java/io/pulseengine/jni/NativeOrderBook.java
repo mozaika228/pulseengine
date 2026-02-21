@@ -1,31 +1,58 @@
 package io.pulseengine.jni;
 
-@Deprecated(forRemoval = false)
-public final class NativeMatchingEngine implements AutoCloseable {
-    private final NativeOrderBook delegate;
+public final class NativeOrderBook implements AutoCloseable {
+    static {
+        System.loadLibrary("pulseengine_native");
+    }
 
-    public NativeMatchingEngine() {
-        this.delegate = new NativeOrderBook();
+    private long nativeHandle;
+
+    public NativeOrderBook() {
+        nativeHandle = nativeCreate();
+        if (nativeHandle == 0) {
+            throw new IllegalStateException("Failed to create native order book");
+        }
     }
 
     public void insertLimitOrder(long orderId, double price, long qty, boolean isBuy) {
-        delegate.insertLimitOrder(orderId, price, qty, isBuy);
+        ensureOpen();
+        nativeInsertLimitOrder(nativeHandle, orderId, price, qty, isBuy);
     }
 
     public MatchResult matchMarketOrder(long orderId, long qty, boolean isBuy) {
-        NativeOrderBook.MatchResult result = delegate.matchMarketOrder(orderId, qty, isBuy);
-        return new MatchResult(result.filledQty, result.remainingQty, result.trades, result.avgPrice, result.lastTradePrice);
+        ensureOpen();
+        return nativeMatchMarketOrder(nativeHandle, orderId, qty, isBuy);
     }
 
     public L2Update publishL2Update() {
-        NativeOrderBook.L2Update update = delegate.publishL2Update();
-        return new L2Update(update.bestBid, update.bestBidQty, update.bestAsk, update.bestAskQty);
+        ensureOpen();
+        return nativePublishL2Update(nativeHandle);
     }
 
     @Override
     public void close() {
-        delegate.close();
+        long handle = nativeHandle;
+        nativeHandle = 0;
+        if (handle != 0) {
+            nativeDestroy(handle);
+        }
     }
+
+    private void ensureOpen() {
+        if (nativeHandle == 0) {
+            throw new IllegalStateException("Native order book is closed");
+        }
+    }
+
+    private static native long nativeCreate();
+
+    private static native void nativeDestroy(long handle);
+
+    private static native void nativeInsertLimitOrder(long handle, long orderId, double price, long qty, boolean isBuy);
+
+    private static native MatchResult nativeMatchMarketOrder(long handle, long orderId, long qty, boolean isBuy);
+
+    private static native L2Update nativePublishL2Update(long handle);
 
     public static final class MatchResult {
         public final long filledQty;

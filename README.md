@@ -35,7 +35,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 - full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
-- JNI bridge skeleton for native C++ matching hot path (`NativeMatchingEngine`)
+- JNI bridge for native C++ matching hot path (`NativeOrderBook`)
 - JNI ingress adapter for Java pipeline integration (`NativeIngressAdapter`)
 
 ## Run
@@ -47,22 +47,38 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalRecoveryTool" "-Dexec.args=verify target/orders.journal.bin"`
 
-## JNI C++ experiment
-- Java wrapper: `src/main/java/io/pulseengine/jni/NativeMatchingEngine.java`
-- Native code: `cpp/src/pulseengine_native.cpp`
+## High-performance C++ core (experimental)
+- Java wrapper: `src/main/java/io/pulseengine/jni/NativeOrderBook.java`
+- Backward-compatible wrapper: `src/main/java/io/pulseengine/jni/NativeMatchingEngine.java`
+- Native core: `cpp/src/native_order_book.hpp`
+- JNI bridge: `cpp/src/pulseengine_native.cpp`
 - CMake project: `cpp/CMakeLists.txt`
+- Build example (Linux/macOS):
+  - `cd cpp && cmake .. && make -j`
 - Build example (PowerShell):
-  - `cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release`
+  - `cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON`
   - `cmake --build cpp/build --config Release`
 - Runtime:
   - place `pulseengine_native.dll`/`libpulseengine_native.so` on `java.library.path`
-  - use `io.pulseengine.jni.NativeMatchingEngine` in the Java pipeline ingress/hot path
+  - use `io.pulseengine.jni.NativeOrderBook` in the Java pipeline ingress/hot path
 - Integration demo:
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativePipelineDemo"`
+  - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativeDisruptorDemo"`
   - pass `-Djava.library.path=<path-to-native-lib>` to JVM if required
 - Java vs JNI benchmark:
   - `mvn -q -DskipTests test-compile`
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=test" "-Dexec.mainClass=org.openjdk.jmh.Main" "-Dexec.args=NativeVsJavaBenchmark.* -wi 3 -i 5 -f 0 -tu ns"`
+- C++ Google Benchmark (insert-limit):
+  - `./cpp/build/order_book_insert_bench --benchmark_format=json --benchmark_out=cpp/build/order_book_insert_bench.json`
+
+## Early numbers
+- Code footprint (core Java + C++ sources): Java `3760` LOC, C++ `220` LOC, C++ share `5.53%`.
+- Latency/throughput snapshot:
+
+| Path | Tool | Scenario | Result |
+|---|---|---|---|
+| Java order book | JMH | `NativeVsJavaBenchmark.javaOrderBookMarketMatch` | `0.008 ops/ns` (~`125 ns/op`) |
+| C++ order book | Google Benchmark | `BM_InsertLimitOrder` | pending CI artifact (`cpp-benchmark-results`) |
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
@@ -76,6 +92,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 ## CI automation
 - Build/test/coverage: `.github/workflows/ci.yml`
 - Nightly performance regression checks: `.github/workflows/nightly-performance.yml`
+- C++ native build + Google Benchmark run: `.github/workflows/ci.yml` (`cpp-benchmark` job)
 
 ## Governance
 - Changelog: `CHANGELOG.md`

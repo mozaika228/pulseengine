@@ -13,6 +13,9 @@ and this project follows Semantic Versioning.
 - JNI + C++ prototype for matching hot path (`insertLimitOrder`, `matchMarketOrder`, `publishL2Update`).
 - Native ingress adapter and demo for integrating JNI core with Java top-of-book updates.
 - JMH benchmark scaffold for Java vs JNI hot-path comparisons.
+- `NativeOrderBook` JNI API as primary Java/C++ integration entrypoint.
+- Native Disruptor pipeline demo (`NativeDisruptorPipeline` / `NativeDisruptorDemo`).
+- C++ Google Benchmark target (`order_book_insert_bench`) and CI automation job (`cpp-benchmark`).
 
 ## [0.2.0] - 2026-02-20
 ### Added

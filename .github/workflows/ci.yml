@@ -60,3 +60,33 @@ jobs:
           -Dexec.classpathScope=test
           -Dexec.mainClass=org.openjdk.jmh.Main
           "-Dexec.args=CoreOrderBookBenchmark.iocCrossingOrder -wi 0 -i 1 -r 1s -f 0 -tu ns"
+
+  cpp-benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install C++ benchmark toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libbenchmark-dev
+
+      - name: Configure CMake
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON
+
+      - name: Build native targets
+        run: cmake --build cpp/build --config Release
+
+      - name: Run Google Benchmark (insert limit)
+        run: |
+          ./cpp/build/order_book_insert_bench \
+            --benchmark_format=json \
+            --benchmark_out=cpp/build/order_book_insert_bench.json
+
+      - name: Upload C++ benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-benchmark-results
+          path: cpp/build/order_book_insert_bench.json
