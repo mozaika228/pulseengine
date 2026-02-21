@@ -106,6 +106,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Nightly performance regression checks: `.github/workflows/nightly-performance.yml`
 - C++ native build + Google Benchmark run: `.github/workflows/ci.yml` (`cpp-benchmark` job)
 - Native backend smoke uses `NativePipelineDemo` with default backend (`NATIVE`) in CI.
+- Release-blocking perf gates in CI (`JMH + HdrHistogram latency + throughput + Google Benchmark`) with report artifact per PR.
 
 ## Governance
 - Changelog: `CHANGELOG.md`

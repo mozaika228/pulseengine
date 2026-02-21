@@ -63,6 +63,7 @@ jobs:
 
   cpp-benchmark:
     runs-on: ubuntu-latest
+    needs: build-test
 
     steps:
       - name: Checkout
@@ -79,11 +80,42 @@ jobs:
       - name: Build native targets
         run: cmake --build cpp/build --config Release
 
+      - name: Compile tests (for JMH)
+        run: mvn -B -DskipTests test-compile
+
       - name: Run Google Benchmark (insert limit)
         run: |
           ./cpp/build/order_book_insert_bench \
             --benchmark_format=json \
             --benchmark_out=cpp/build/order_book_insert_bench.json
+
+      - name: Run JMH core benchmark (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=CoreOrderBookBenchmark.iocCrossingOrder -wi 0 -i 1 -r 1s -f 0 -rf json -rff target/jmh-core-ci.json"
+
+      - name: Run JMH pipeline benchmark no-md (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=PipelineBenchmark.iocCrossingOrder -p enableMd=false -wi 0 -i 1 -r 1s -f 0 -rf json -rff target/jmh-pipeline-no-md-ci.json"
+
+      - name: Run latency harness (HdrHistogram)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.LatencyHarness
+          > target/latency-harness.txt
+
+      - name: Run throughput demo
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.PipelineDemo
+          > target/pipeline-demo.txt
 
       - name: Native backend smoke (default backend)
         run: >-
@@ -92,8 +124,31 @@ jobs:
           -Dexec.mainClass=io.pulseengine.app.NativePipelineDemo
           "-Dexec.jvmArgs=-Djava.library.path=${{ github.workspace }}/cpp/build"
 
+      - name: Validate performance gates
+        run: >-
+          python3 scripts/perf/validate_perf.py
+          --jmh-core target/jmh-core-ci.json
+          --jmh-pipeline target/jmh-pipeline-no-md-ci.json
+          --latency-harness target/latency-harness.txt
+          --pipeline-demo target/pipeline-demo.txt
+          --cpp-bench cpp/build/order_book_insert_bench.json
+          --out-report target/perf-regression-report.md
+
       - name: Upload C++ benchmark artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cpp-benchmark-results
           path: cpp/build/order_book_insert_bench.json
+
+      - name: Upload perf regression report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-regression-report
+          path: |
+            target/perf-regression-report.md
+            target/jmh-core-ci.json
+            target/jmh-pipeline-no-md-ci.json
+            target/latency-harness.txt
+            target/pipeline-demo.txt

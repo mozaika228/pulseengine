@@ -30,6 +30,8 @@ and this project follows Semantic Versioning.
 - Added randomized parity fuzz test for Java vs native matching on shared command subset (`NativeParityFuzzTest`).
 - Added long-run parity soak harness (`NativeParitySoakTool`) for 6h+ drift detection.
 - Added restart parity coverage for coordinated recovery (`snapshot + catch-up + restart + re-snapshot + second restart`).
+- Added CI performance gate validator (`scripts/perf/validate_perf.py`) with blocking thresholds for JMH, latency percentiles, throughput, and C++ benchmark.
+- Added per-PR performance regression report artifact (`perf-regression-report`).
 
 ## [0.2.0] - 2026-02-20
 ### Added
