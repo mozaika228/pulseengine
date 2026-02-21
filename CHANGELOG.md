@@ -27,6 +27,8 @@ and this project follows Semantic Versioning.
 - CI native smoke now executes Java demo on the default native backend after C++ build.
 - ABI/API freeze foundations: `native_api_version` + min-compatible API + binary layout version/hash compatibility checks.
 - Added JNI ABI compatibility test coverage (`NativeAbiCompatibilityTest`).
+- Added randomized parity fuzz test for Java vs native matching on shared command subset (`NativeParityFuzzTest`).
+- Added long-run parity soak harness (`NativeParitySoakTool`) for 6h+ drift detection.
 
 ## [0.2.0] - 2026-02-20
 ### Added

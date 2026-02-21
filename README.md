@@ -78,6 +78,10 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=test" "-Dexec.mainClass=org.openjdk.jmh.Main" "-Dexec.args=NativeVsJavaBenchmark.* -wi 3 -i 5 -f 0 -tu ns"`
 - C++ Google Benchmark (insert-limit):
   - `./cpp/build/order_book_insert_bench --benchmark_format=json --benchmark_out=cpp/build/order_book_insert_bench.json`
+- Property/fuzz parity test (Java vs native):
+  - `mvn -q -Dtest=NativeParityFuzzTest test`
+- Soak parity tool (default 6h):
+  - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativeParitySoakTool" "-Dexec.args=21600 20260221"`
 
 ## Early numbers
 - Code footprint (core Java + C++ sources): Java `3760` LOC, C++ `220` LOC, C++ share `5.53%`.
