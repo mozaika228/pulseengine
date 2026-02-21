@@ -1,13 +1,42 @@
 package io.pulseengine.jni;
 
 public final class NativeOrderBook implements AutoCloseable {
+    public static final int CLIENT_API_VERSION = 1;
+    public static final int CLIENT_MIN_COMPATIBLE_API_VERSION = 1;
+
+    private static final Throwable LOAD_ERROR;
+    private static final int LOADED_API_VERSION;
+    private static final int LOADED_MIN_COMPATIBLE_API_VERSION;
+    private static final int LOADED_LAYOUT_VERSION;
+    private static final int LOADED_LAYOUT_HASH;
+
     static {
-        System.loadLibrary("pulseengine_native");
+        Throwable loadError = null;
+        int apiVersion = -1;
+        int minCompatibleApiVersion = -1;
+        int layoutVersion = -1;
+        int layoutHash = -1;
+        try {
+            System.loadLibrary("pulseengine_native");
+            apiVersion = nativeApiVersion();
+            minCompatibleApiVersion = nativeMinCompatibleApiVersion();
+            layoutVersion = nativeCommandLayoutVersion();
+            layoutHash = nativeCommandLayoutHash();
+            verifyCompatibility(apiVersion, minCompatibleApiVersion, layoutVersion, layoutHash);
+        } catch (Throwable t) {
+            loadError = t;
+        }
+        LOAD_ERROR = loadError;
+        LOADED_API_VERSION = apiVersion;
+        LOADED_MIN_COMPATIBLE_API_VERSION = minCompatibleApiVersion;
+        LOADED_LAYOUT_VERSION = layoutVersion;
+        LOADED_LAYOUT_HASH = layoutHash;
     }
 
     private long nativeHandle;
 
     public NativeOrderBook() {
+        ensureNativeAvailable();
         nativeHandle = nativeCreate();
         if (nativeHandle == 0) {
             throw new IllegalStateException("Failed to create native order book");
@@ -39,8 +68,62 @@ public final class NativeOrderBook implements AutoCloseable {
     }
 
     private void ensureOpen() {
+        ensureNativeAvailable();
         if (nativeHandle == 0) {
             throw new IllegalStateException("Native order book is closed");
+        }
+    }
+
+    public static boolean isNativeAvailable() {
+        return LOAD_ERROR == null;
+    }
+
+    public static int loadedApiVersion() {
+        return LOADED_API_VERSION;
+    }
+
+    public static int loadedMinCompatibleApiVersion() {
+        return LOADED_MIN_COMPATIBLE_API_VERSION;
+    }
+
+    public static int loadedCommandLayoutVersion() {
+        return LOADED_LAYOUT_VERSION;
+    }
+
+    public static int loadedCommandLayoutHash() {
+        return LOADED_LAYOUT_HASH;
+    }
+
+    private static void ensureNativeAvailable() {
+        if (LOAD_ERROR != null) {
+            throw new IllegalStateException("Native library is unavailable or ABI-incompatible", LOAD_ERROR);
+        }
+    }
+
+    private static void verifyCompatibility(
+        int apiVersion,
+        int minCompatibleApiVersion,
+        int commandLayoutVersion,
+        int commandLayoutHash
+    ) {
+        if (CLIENT_API_VERSION > apiVersion || CLIENT_API_VERSION < minCompatibleApiVersion) {
+            throw new IllegalStateException(
+                "Native API version mismatch: client=" + CLIENT_API_VERSION
+                    + " native_api=" + apiVersion
+                    + " native_min_compat=" + minCompatibleApiVersion
+            );
+        }
+        if (commandLayoutVersion != NativeOrderBinaryLayout.VERSION) {
+            throw new IllegalStateException(
+                "Native binary layout version mismatch: client=" + NativeOrderBinaryLayout.VERSION
+                    + " native=" + commandLayoutVersion
+            );
+        }
+        if (commandLayoutHash != NativeOrderBinaryLayout.HASH) {
+            throw new IllegalStateException(
+                "Native binary layout hash mismatch: client=" + NativeOrderBinaryLayout.HASH
+                    + " native=" + commandLayoutHash
+            );
         }
     }
 
@@ -53,6 +136,14 @@ public final class NativeOrderBook implements AutoCloseable {
     private static native MatchResult nativeMatchMarketOrder(long handle, long orderId, long qty, boolean isBuy);
 
     private static native L2Update nativePublishL2Update(long handle);
+
+    private static native int nativeApiVersion();
+
+    private static native int nativeMinCompatibleApiVersion();
+
+    private static native int nativeCommandLayoutVersion();
+
+    private static native int nativeCommandLayoutHash();
 
     public static final class MatchResult {
         public final long filledQty;

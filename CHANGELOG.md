@@ -25,6 +25,8 @@ and this project follows Semantic Versioning.
 - Native C++ order book switched to fixed-capacity ladders and preallocated node freelist (no runtime container growth in matching hot path).
 - `MatchingBackend` switch (`JAVA|NATIVE`) added, with `NATIVE` default in `NativePipelineDemo`.
 - CI native smoke now executes Java demo on the default native backend after C++ build.
+- ABI/API freeze foundations: `native_api_version` + min-compatible API + binary layout version/hash compatibility checks.
+- Added JNI ABI compatibility test coverage (`NativeAbiCompatibilityTest`).
 
 ## [0.2.0] - 2026-02-20
 ### Added

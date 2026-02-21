@@ -44,7 +44,7 @@ public class NativeVsJavaBenchmark {
                 available = true;
                 nextOrderId = 100;
                 nativeIngress.insertLimitOrder(1, 50_000, 1_000_000, false);
-            } catch (UnsatisfiedLinkError e) {
+            } catch (RuntimeException | UnsatisfiedLinkError e) {
                 available = false;
             }
         }

@@ -37,7 +37,7 @@ public final class NativePipelineDemo {
             System.out.println("filled=" + result.filledQty + " remaining=" + result.remainingQty + " trades=" + result.trades);
             System.out.println("bestBid=" + l2.bestBid + " bestAsk=" + l2.bestAsk);
             System.out.println("topOfBook=" + top.bestBid() + "/" + top.bestAsk());
-        } catch (UnsatisfiedLinkError e) {
+        } catch (RuntimeException | UnsatisfiedLinkError e) {
             System.err.println("Native library is not loaded. Build cpp/ and set java.library.path.");
             throw e;
         }

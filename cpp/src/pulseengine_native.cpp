@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include "native_abi.hpp"
 #include "native_order_book.hpp"
 
 namespace pulseengine {
@@ -112,6 +113,22 @@ JNIEXPORT jobject JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativePublishL
         }
         return nullptr;
     }
+}
+
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeApiVersion(JNIEnv*, jclass) {
+    return static_cast<jint>(pulseengine::NATIVE_API_VERSION);
+}
+
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeMinCompatibleApiVersion(JNIEnv*, jclass) {
+    return static_cast<jint>(pulseengine::NATIVE_MIN_COMPATIBLE_API_VERSION);
+}
+
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeCommandLayoutVersion(JNIEnv*, jclass) {
+    return static_cast<jint>(pulseengine::NATIVE_COMMAND_LAYOUT_VERSION);
+}
+
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeCommandLayoutHash(JNIEnv*, jclass) {
+    return static_cast<jint>(pulseengine::nativeCommandLayoutHash());
 }
 
 } // extern "C"
