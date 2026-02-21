@@ -18,6 +18,7 @@ and this project follows Semantic Versioning.
 - C++ Google Benchmark target (`order_book_insert_bench`) and CI automation job (`cpp-benchmark`).
 - Coordinated recovery flow: snapshot capture + checkpoint metadata + journal incremental catch-up replay.
 - Coordinated recovery CLI tool (`CoordinatedRecoveryTool`) and integration test coverage.
+- Aeron UDP transport profile for unicast ingress + multicast market-data dissemination (`AeronUdpMulticastDemo`).
 
 ## [0.2.0] - 2026-02-20
 ### Added

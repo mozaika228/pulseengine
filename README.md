@@ -32,6 +32,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - throughput demo (`PipelineDemo`)
 - binary feed demo with decoder (`BinaryFeedDemo`)
 - Aeron IPC transport demo (`AeronIpcDemo`) for order ingress and market-data dissemination
+- Aeron UDP transport profile demo (`AeronUdpMulticastDemo`) for unicast ingress + multicast market data
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 - full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
@@ -45,6 +46,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.PipelineDemo"`
 - PowerShell (SBE/Agrona runtime): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.BinaryFeedDemo"`
 - PowerShell (Aeron IPC): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronIpcDemo"`
+- PowerShell (Aeron UDP/multicast): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalRecoveryTool" "-Dexec.args=verify target/orders.journal.bin"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=capture target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
@@ -104,6 +106,5 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - License: `LICENSE`
 
 ## Not yet HFT-final
-- UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
 - still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)
 - JNI prototype still uses `std::map`/`std::list`; not yet cache-optimal contiguous book layout
