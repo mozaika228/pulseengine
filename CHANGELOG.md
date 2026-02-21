@@ -23,6 +23,8 @@ and this project follows Semantic Versioning.
 - Lower-allocation journal replay path by reusing a single little-endian record view.
 - Native C++ order book migrated from `std::map/std::list` to contiguous level vectors with intrusive order queues.
 - Native C++ order book switched to fixed-capacity ladders and preallocated node freelist (no runtime container growth in matching hot path).
+- `MatchingBackend` switch (`JAVA|NATIVE`) added, with `NATIVE` default in `NativePipelineDemo`.
+- CI native smoke now executes Java demo on the default native backend after C++ build.
 
 ## [0.2.0] - 2026-02-20
 ### Added

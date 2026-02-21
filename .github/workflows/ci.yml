@@ -85,6 +85,13 @@ jobs:
             --benchmark_format=json \
             --benchmark_out=cpp/build/order_book_insert_bench.json
 
+      - name: Native backend smoke (default backend)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.NativePipelineDemo
+          "-Dexec.jvmArgs=-Djava.library.path=${{ github.workspace }}/cpp/build"
+
       - name: Upload C++ benchmark artifact
         uses: actions/upload-artifact@v4
         with:

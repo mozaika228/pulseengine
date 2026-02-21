@@ -70,6 +70,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativePipelineDemo"`
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativeDisruptorDemo"`
   - pass `-Djava.library.path=<path-to-native-lib>` to JVM if required
+  - backend switch: `-Dpulseengine.matchingBackend=JAVA|NATIVE` (default: `NATIVE`)
 - Java vs JNI benchmark:
   - `mvn -q -DskipTests test-compile`
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=test" "-Dexec.mainClass=org.openjdk.jmh.Main" "-Dexec.args=NativeVsJavaBenchmark.* -wi 3 -i 5 -f 0 -tu ns"`
@@ -98,6 +99,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Build/test/coverage: `.github/workflows/ci.yml`
 - Nightly performance regression checks: `.github/workflows/nightly-performance.yml`
 - C++ native build + Google Benchmark run: `.github/workflows/ci.yml` (`cpp-benchmark` job)
+- Native backend smoke uses `NativePipelineDemo` with default backend (`NATIVE`) in CI.
 
 ## Governance
 - Changelog: `CHANGELOG.md`
