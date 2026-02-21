@@ -1,8 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
-#include <list>
-#include <map>
+#include <vector>
 
 namespace pulseengine {
 
@@ -14,18 +14,18 @@ struct Order {
 };
 
 struct OrderQueue {
-    std::list<Order> orders;
+    int head = -1;
+    int tail = -1;
     std::int64_t totalQty = 0;
 
-    void push(const Order& order) {
-        orders.push_back(order);
-        totalQty += order.qty;
+    [[nodiscard]] bool empty() const {
+        return head < 0;
     }
 };
 
 struct PriceLevel {
     double price = 0.0;
-    OrderQueue queue;
+    OrderQueue queue{};
 };
 
 struct MatchResultNative {
@@ -45,20 +45,28 @@ struct L2UpdateNative {
 
 class OrderBook {
 public:
+    explicit OrderBook(std::size_t reserveLevels = 1024, std::size_t reserveOrders = 16384)
+        : orderPool_(reserveOrders) {
+        bids_.reserve(reserveLevels);
+        asks_.reserve(reserveLevels);
+    }
+
     void insertLimitOrder(Order& order) {
-        if (order.isBuy) {
-            auto [it, inserted] = bids_.emplace(order.price, PriceLevel{});
-            if (inserted) {
-                it->second.price = order.price;
-            }
-            it->second.queue.push(order);
-        } else {
-            auto [it, inserted] = asks_.emplace(order.price, PriceLevel{});
-            if (inserted) {
-                it->second.price = order.price;
-            }
-            it->second.queue.push(order);
+        if (order.qty <= 0) {
+            return;
         }
+
+        auto& levels = order.isBuy ? bids_ : asks_;
+        int pos = findLevelInsertPos(levels, order.price, order.isBuy);
+        if (pos < static_cast<int>(levels.size()) && levels[static_cast<std::size_t>(pos)].price == order.price) {
+            enqueue(levels[static_cast<std::size_t>(pos)].queue, order.orderId, order.qty);
+            return;
+        }
+
+        PriceLevel level{};
+        level.price = order.price;
+        enqueue(level.queue, order.orderId, order.qty);
+        levels.insert(levels.begin() + pos, level);
     }
 
     MatchResultNative matchMarketOrder(Order& aggressor) {
@@ -69,10 +77,36 @@ public:
         }
 
         double notional = 0.0;
-        if (aggressor.isBuy) {
-            matchAgainst(asks_, result, notional);
-        } else {
-            matchAgainst(bids_, result, notional);
+        auto& passiveLevels = aggressor.isBuy ? asks_ : bids_;
+        while (result.remainingQty > 0 && !passiveLevels.empty()) {
+            PriceLevel& level = passiveLevels.front();
+            OrderQueue& q = level.queue;
+
+            while (result.remainingQty > 0 && !q.empty()) {
+                int nodeIdx = q.head;
+                Node& node = orderPool_.at(nodeIdx);
+
+                const std::int64_t traded = (result.remainingQty < node.qty) ? result.remainingQty : node.qty;
+                node.qty -= traded;
+                q.totalQty -= traded;
+                result.remainingQty -= traded;
+                result.filledQty += traded;
+                result.trades += 1;
+                result.lastTradePrice = level.price;
+                notional += static_cast<double>(traded) * level.price;
+
+                if (node.qty == 0) {
+                    q.head = node.next;
+                    if (q.head < 0) {
+                        q.tail = -1;
+                    }
+                    orderPool_.release(nodeIdx);
+                }
+            }
+
+            if (q.empty()) {
+                passiveLevels.erase(passiveLevels.begin());
+            }
         }
 
         if (result.filledQty > 0) {
@@ -81,52 +115,109 @@ public:
         return result;
     }
 
-    L2UpdateNative publishL2Update() const {
+    [[nodiscard]] L2UpdateNative publishL2Update() const {
         L2UpdateNative out{};
         if (!bids_.empty()) {
-            const auto& level = bids_.begin()->second;
-            out.bestBid = level.price;
-            out.bestBidQty = level.queue.totalQty;
+            out.bestBid = bids_.front().price;
+            out.bestBidQty = bids_.front().queue.totalQty;
         }
         if (!asks_.empty()) {
-            const auto& level = asks_.begin()->second;
-            out.bestAsk = level.price;
-            out.bestAskQty = level.queue.totalQty;
+            out.bestAsk = asks_.front().price;
+            out.bestAskQty = asks_.front().queue.totalQty;
         }
         return out;
     }
 
 private:
-    template <typename BookMap>
-    static void matchAgainst(BookMap& passiveBook, MatchResultNative& result, double& notional) {
-        while (result.remainingQty > 0 && !passiveBook.empty()) {
-            auto levelIt = passiveBook.begin();
-            auto& queue = levelIt->second.queue;
+    struct Node {
+        std::int64_t orderId = 0;
+        std::int64_t qty = 0;
+        int next = -1;
+    };
 
-            while (result.remainingQty > 0 && !queue.orders.empty()) {
-                Order& passive = queue.orders.front();
-                std::int64_t traded = (result.remainingQty < passive.qty) ? result.remainingQty : passive.qty;
-                passive.qty -= traded;
-                queue.totalQty -= traded;
-                result.remainingQty -= traded;
-                result.filledQty += traded;
-                notional += static_cast<double>(traded) * passive.price;
-                result.lastTradePrice = passive.price;
-                result.trades += 1;
-
-                if (passive.qty == 0) {
-                    queue.orders.pop_front();
-                }
-            }
-
-            if (queue.orders.empty()) {
-                passiveBook.erase(levelIt);
-            }
+    class NodePool {
+    public:
+        explicit NodePool(std::size_t reserveNodes) {
+            nodes_.reserve(reserveNodes);
+            freeList_.reserve(reserveNodes / 2);
         }
+
+        int acquire(std::int64_t orderId, std::int64_t qty) {
+            int idx;
+            if (!freeList_.empty()) {
+                idx = freeList_.back();
+                freeList_.pop_back();
+                Node& n = nodes_[static_cast<std::size_t>(idx)];
+                n.orderId = orderId;
+                n.qty = qty;
+                n.next = -1;
+            } else {
+                idx = static_cast<int>(nodes_.size());
+                nodes_.push_back(Node{orderId, qty, -1});
+            }
+            return idx;
+        }
+
+        void release(int idx) {
+            Node& n = nodes_[static_cast<std::size_t>(idx)];
+            n.orderId = 0;
+            n.qty = 0;
+            n.next = -1;
+            freeList_.push_back(idx);
+        }
+
+        Node& at(int idx) {
+            return nodes_[static_cast<std::size_t>(idx)];
+        }
+
+    private:
+        std::vector<Node> nodes_;
+        std::vector<int> freeList_;
+    };
+
+    void enqueue(OrderQueue& queue, std::int64_t orderId, std::int64_t qty) {
+        int idx = orderPool_.acquire(orderId, qty);
+        if (queue.tail >= 0) {
+            orderPool_.at(queue.tail).next = idx;
+        } else {
+            queue.head = idx;
+        }
+        queue.tail = idx;
+        queue.totalQty += qty;
     }
 
-    std::map<double, PriceLevel, std::greater<>> bids_;
-    std::map<double, PriceLevel, std::less<>> asks_;
+    static int findLevelInsertPos(const std::vector<PriceLevel>& levels, double price, bool isBuy) {
+        if (levels.empty()) {
+            return 0;
+        }
+        int lo = 0;
+        int hi = static_cast<int>(levels.size());
+        while (lo < hi) {
+            int mid = lo + ((hi - lo) / 2);
+            double midPrice = levels[static_cast<std::size_t>(mid)].price;
+            if (midPrice == price) {
+                return mid;
+            }
+            if (isBuy) {
+                if (midPrice < price) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            } else {
+                if (midPrice > price) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+        }
+        return lo;
+    }
+
+    std::vector<PriceLevel> bids_;
+    std::vector<PriceLevel> asks_;
+    NodePool orderPool_;
 };
 
 } // namespace pulseengine

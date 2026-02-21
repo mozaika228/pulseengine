@@ -21,6 +21,7 @@ and this project follows Semantic Versioning.
 - Aeron UDP transport profile for unicast ingress + multicast market-data dissemination (`AeronUdpMulticastDemo`).
 - Bounded backpressure handling in Aeron transport sinks/gateways (no unbounded spin loops).
 - Lower-allocation journal replay path by reusing a single little-endian record view.
+- Native C++ order book migrated from `std::map/std::list` to contiguous level vectors with intrusive order queues.
 
 ## [0.2.0] - 2026-02-20
 ### Added

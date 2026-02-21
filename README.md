@@ -107,4 +107,4 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## Not yet HFT-final
 - still not fully wait-free/garbage-free in all paths (core data structures still use tree/list layouts; transport now uses bounded backpressure attempts instead of unbounded spin)
-- JNI prototype still uses `std::map`/`std::list`; not yet cache-optimal contiguous book layout
+- JNI prototype now uses contiguous level vectors + intrusive queues, but still needs fixed-capacity ladders/allocators for fully wait-free behavior
