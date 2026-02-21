@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [Unreleased]
+### Added
+- Full order-book state snapshot store with CRC32 and fast restore support.
+- Engine-level snapshot APIs: `saveStateSnapshot` and `loadStateSnapshot`.
+- Snapshot integrity unit tests.
+
 ## [0.2.0] - 2026-02-20
 ### Added
 - Single-symbol matching engine with price-time priority, IOC/FOK/GTC, market and stop-market orders.

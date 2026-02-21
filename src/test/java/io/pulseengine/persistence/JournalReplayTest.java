@@ -24,13 +24,14 @@ class JournalReplayTest {
         try (EnginePipeline engine = new EnginePipeline(1 << 14, new BlackholeSink(), SmpPolicy.CANCEL_AGGRESSOR, live, JournalReplayTest::newDaemon);
              FileCommandJournal journal = new FileCommandJournal(file, true);
              JournaledEngineGateway gateway = new JournaledEngineGateway(engine, journal)) {
+            long start = live.sequence();
 
             gateway.submitLimit(1, 10, Side.BUY, 49_900, 50, TimeInForce.GTC, 0);
             gateway.submitLimit(2, 11, Side.SELL, 50_100, 40, TimeInForce.GTC, 0);
             gateway.submitLimit(3, 12, Side.BUY, 50_200, 2, TimeInForce.IOC, 0);
             gateway.submitLimit(4, 13, Side.SELL, 49_800, 1, TimeInForce.IOC, 0);
 
-            long target = live.sequence() + 4;
+            long target = start + 4;
             while (live.sequence() < target) {
                 Thread.onSpinWait();
             }

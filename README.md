@@ -34,6 +34,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Aeron IPC transport demo (`AeronIpcDemo`) for order ingress and market-data dissemination
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
+- full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
 
 ## Run
 - `mvn -q -DskipTests=false verify`
@@ -65,5 +66,5 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## Not yet HFT-final
 - UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
-- persistence/replay has file-journal + CRC/recovery, but still lacks full state snapshotting and fast state restore
+- persistence/replay has file-journal + CRC/recovery + full snapshot/restore, but still lacks journal+snapshot coordinated incremental catch-up tooling
 - still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)

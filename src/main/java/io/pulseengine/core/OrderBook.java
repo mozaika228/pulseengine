@@ -2,6 +2,8 @@ package io.pulseengine.core;
 
 import org.agrona.collections.Long2ObjectHashMap;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.Deque;
@@ -9,6 +11,12 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 public final class OrderBook {
+    private static final int SNAPSHOT_MAGIC = 0x50455331; // PES1
+    private static final int SNAPSHOT_VERSION = 1;
+    private static final int SNAPSHOT_HEADER_BYTES = 4 + 4 + 8 + 8 + 4 + 4 + 4;
+    private static final int SNAPSHOT_ORDER_BYTES = 8 + 8 + 1 + 8 + 8 + 8 + 8 + 8;
+    private static final int SNAPSHOT_STOP_BYTES = 8 + 8 + 1 + 8 + 8;
+
     private final NavigableMap<Long, PriceLevel> bids = new TreeMap<>(Comparator.reverseOrder());
     private final NavigableMap<Long, PriceLevel> asks = new TreeMap<>();
     private final Long2ObjectHashMap<BookOrder> liveOrders = new Long2ObjectHashMap<>();
@@ -284,6 +292,163 @@ public final class OrderBook {
             askCount++;
         }
         return Math.min(bidCount, askCount);
+    }
+
+    public int snapshotSizeBytes() {
+        int live = liveOrderCount();
+        return SNAPSHOT_HEADER_BYTES + (live * SNAPSHOT_ORDER_BYTES) + ((stopBuys.size() + stopSells.size()) * SNAPSHOT_STOP_BYTES);
+    }
+
+    public void writeSnapshot(ByteBuffer buffer) {
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+        int live = liveOrderCount();
+        int buyStops = stopBuys.size();
+        int sellStops = stopSells.size();
+        int required = SNAPSHOT_HEADER_BYTES + (live * SNAPSHOT_ORDER_BYTES) + ((buyStops + sellStops) * SNAPSHOT_STOP_BYTES);
+        if (buffer.remaining() < required) {
+            throw new IllegalArgumentException("Snapshot buffer too small: need=" + required + " have=" + buffer.remaining());
+        }
+
+        buffer.putInt(SNAPSHOT_MAGIC);
+        buffer.putInt(SNAPSHOT_VERSION);
+        buffer.putLong(tradeSeq);
+        buffer.putLong(lastTradePrice);
+        buffer.putInt(live);
+        buffer.putInt(buyStops);
+        buffer.putInt(sellStops);
+
+        writeLiveSide(buffer, bids);
+        writeLiveSide(buffer, asks);
+        writeStops(buffer, stopBuys);
+        writeStops(buffer, stopSells);
+    }
+
+    public void loadSnapshot(ByteBuffer buffer) {
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        int magic = buffer.getInt();
+        if (magic != SNAPSHOT_MAGIC) {
+            throw new IllegalArgumentException("Bad snapshot magic");
+        }
+        int version = buffer.getInt();
+        if (version != SNAPSHOT_VERSION) {
+            throw new IllegalArgumentException("Unsupported snapshot version: " + version);
+        }
+
+        clearState();
+        tradeSeq = buffer.getLong();
+        lastTradePrice = buffer.getLong();
+        int liveCount = buffer.getInt();
+        int buyStops = buffer.getInt();
+        int sellStops = buffer.getInt();
+
+        if (liveCount < 0 || buyStops < 0 || sellStops < 0) {
+            throw new IllegalArgumentException("Negative snapshot counts");
+        }
+
+        for (int i = 0; i < liveCount; i++) {
+            BookOrder order = borrowOrder();
+            order.orderId = buffer.getLong();
+            order.traderId = buffer.getLong();
+            order.side = readSide(buffer.get());
+            order.priceTicks = buffer.getLong();
+            order.openQty = buffer.getLong();
+            order.visibleQty = buffer.getLong();
+            order.peakSize = buffer.getLong();
+            order.sequence = buffer.getLong();
+
+            if (order.openQty <= 0 || order.visibleQty <= 0 || order.visibleQty > order.openQty) {
+                throw new IllegalArgumentException("Invalid live order state in snapshot");
+            }
+
+            addToBook(order);
+            liveOrders.put(order.orderId, order);
+        }
+
+        for (int i = 0; i < buyStops; i++) {
+            stopBuys.addLast(readStop(buffer));
+        }
+        for (int i = 0; i < sellStops; i++) {
+            stopSells.addLast(readStop(buffer));
+        }
+    }
+
+    private int liveOrderCount() {
+        return liveOrders.size();
+    }
+
+    private void writeLiveSide(ByteBuffer buffer, NavigableMap<Long, PriceLevel> sideBook) {
+        for (PriceLevel level : sideBook.values()) {
+            BookOrder order = level.head;
+            while (order != null) {
+                buffer.putLong(order.orderId);
+                buffer.putLong(order.traderId);
+                buffer.put(order.side == Side.SELL ? (byte) 1 : (byte) 0);
+                buffer.putLong(order.priceTicks);
+                buffer.putLong(order.openQty);
+                buffer.putLong(order.visibleQty);
+                buffer.putLong(order.peakSize);
+                buffer.putLong(order.sequence);
+                order = order.next;
+            }
+        }
+    }
+
+    private void writeStops(ByteBuffer buffer, Deque<StopOrder> stops) {
+        for (StopOrder stop : stops) {
+            buffer.putLong(stop.orderId);
+            buffer.putLong(stop.traderId);
+            buffer.put(stop.side == Side.SELL ? (byte) 1 : (byte) 0);
+            buffer.putLong(stop.stopPriceTicks);
+            buffer.putLong(stop.quantity);
+        }
+    }
+
+    private StopOrder readStop(ByteBuffer buffer) {
+        StopOrder stop = borrowStop();
+        stop.orderId = buffer.getLong();
+        stop.traderId = buffer.getLong();
+        stop.side = readSide(buffer.get());
+        stop.stopPriceTicks = buffer.getLong();
+        stop.quantity = buffer.getLong();
+        if (stop.quantity <= 0) {
+            throw new IllegalArgumentException("Invalid stop state in snapshot");
+        }
+        return stop;
+    }
+
+    private static Side readSide(byte side) {
+        return side == 1 ? Side.SELL : Side.BUY;
+    }
+
+    private void clearState() {
+        recycleBookSide(bids);
+        recycleBookSide(asks);
+        bids.clear();
+        asks.clear();
+        liveOrders.clear();
+        recycleStops(stopBuys);
+        recycleStops(stopSells);
+        tradeSeq = 0;
+        lastTradePrice = 0;
+    }
+
+    private void recycleBookSide(NavigableMap<Long, PriceLevel> sideBook) {
+        for (PriceLevel level : sideBook.values()) {
+            BookOrder order = level.head;
+            while (order != null) {
+                BookOrder next = order.next;
+                recycleOrder(order);
+                order = next;
+            }
+        }
+    }
+
+    private void recycleStops(Deque<StopOrder> stops) {
+        StopOrder stop;
+        while ((stop = stops.pollFirst()) != null) {
+            recycleStop(stop);
+        }
     }
 
     private BookOrder borrowOrder() {

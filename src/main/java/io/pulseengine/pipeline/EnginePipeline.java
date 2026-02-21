@@ -19,7 +19,9 @@ import io.pulseengine.core.TimeInForce;
 import io.pulseengine.md.BinaryMdPublisher;
 import io.pulseengine.md.MdMessageType;
 import io.pulseengine.md.TopOfBookView;
+import io.pulseengine.persistence.OrderBookSnapshotStore;
 
+import java.nio.file.Path;
 import java.util.concurrent.ThreadFactory;
 
 public final class EnginePipeline implements AutoCloseable {
@@ -344,6 +346,15 @@ public final class EnginePipeline implements AutoCloseable {
 
     public TopOfBookView topOfBook() {
         return topOfBook;
+    }
+
+    public void saveStateSnapshot(Path path) {
+        OrderBookSnapshotStore.write(path, orderBook);
+    }
+
+    public void loadStateSnapshot(Path path) {
+        OrderBookSnapshotStore.load(path, orderBook);
+        topOfBook.publish(orderBook.bestBid(), orderBook.bestAsk());
     }
 
     @Override
