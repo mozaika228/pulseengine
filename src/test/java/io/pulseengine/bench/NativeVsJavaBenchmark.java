@@ -5,7 +5,6 @@ import io.pulseengine.core.OrderBook;
 import io.pulseengine.core.OrderRequest;
 import io.pulseengine.core.SmpPolicy;
 import io.pulseengine.core.TimeInForce;
-import io.pulseengine.jni.NativeMatchingEngine;
 import io.pulseengine.md.TopOfBookView;
 import io.pulseengine.pipeline.NativeIngressAdapter;
 import org.openjdk.jmh.annotations.Benchmark;
