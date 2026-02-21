@@ -17,11 +17,22 @@ public final class JournalReplayer {
     }
 
     public static long replay(Path path, EnginePipeline engine) {
+        return replayFromRecord(path, engine, 0);
+    }
+
+    public static long replayFromRecord(Path path, EnginePipeline engine, long startRecord) {
+        if (startRecord < 0) {
+            throw new IllegalArgumentException("startRecord must be >= 0");
+        }
+
         ByteBuffer buffer = ByteBuffer.allocateDirect(JournalCodec.RECORD_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
         byte[] record = new byte[JournalCodec.RECORD_LENGTH];
         long replayed = 0;
 
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            long startPos = startRecord * JournalCodec.RECORD_LENGTH;
+            channel.position(startPos);
+
             while (true) {
                 buffer.clear();
                 int bytes = 0;
@@ -39,10 +50,10 @@ public final class JournalReplayer {
                 buffer.flip();
                 buffer.get(record);
                 if (!JournalCodec.validateMagic(record)) {
-                    throw new IllegalStateException("Corrupt journal: bad magic at record=" + replayed);
+                    throw new IllegalStateException("Corrupt journal: bad magic at record=" + (startRecord + replayed));
                 }
                 if (!JournalCodec.validateChecksum(record)) {
-                    throw new IllegalStateException("Corrupt journal: bad checksum at record=" + replayed);
+                    throw new IllegalStateException("Corrupt journal: bad checksum at record=" + (startRecord + replayed));
                 }
 
                 byte recordType = record[JournalCodec.offRecordType()];

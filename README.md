@@ -35,6 +35,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 - full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
+- coordinated recovery tooling: snapshot + journal checkpoint + incremental catch-up replay
 - JNI bridge for native C++ matching hot path (`NativeOrderBook`)
 - JNI ingress adapter for Java pipeline integration (`NativeIngressAdapter`)
 
@@ -46,6 +47,8 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - PowerShell (Aeron IPC): `$env:MAVEN_OPTS='--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'; mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.AeronIpcDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalReplayDemo"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.JournalRecoveryTool" "-Dexec.args=verify target/orders.journal.bin"`
+- `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=capture target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
+- `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=restore target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
 
 ## High-performance C++ core (experimental)
 - Java wrapper: `src/main/java/io/pulseengine/jni/NativeOrderBook.java`
@@ -102,6 +105,5 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## Not yet HFT-final
 - UDP/multicast transport profiles are not added yet (Aeron IPC is implemented)
-- persistence/replay has file-journal + CRC/recovery + full snapshot/restore, but still lacks journal+snapshot coordinated incremental catch-up tooling
 - still not fully wait-free/garbage-free in all paths (data structures and selected transport paths still use spin/heap fallback)
 - JNI prototype still uses `std::map`/`std::list`; not yet cache-optimal contiguous book layout

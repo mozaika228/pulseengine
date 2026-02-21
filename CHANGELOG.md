@@ -16,6 +16,8 @@ and this project follows Semantic Versioning.
 - `NativeOrderBook` JNI API as primary Java/C++ integration entrypoint.
 - Native Disruptor pipeline demo (`NativeDisruptorPipeline` / `NativeDisruptorDemo`).
 - C++ Google Benchmark target (`order_book_insert_bench`) and CI automation job (`cpp-benchmark`).
+- Coordinated recovery flow: snapshot capture + checkpoint metadata + journal incremental catch-up replay.
+- Coordinated recovery CLI tool (`CoordinatedRecoveryTool`) and integration test coverage.
 
 ## [0.2.0] - 2026-02-20
 ### Added
