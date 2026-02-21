@@ -46,12 +46,19 @@ struct L2UpdateNative {
 class OrderBook {
 public:
     void insertLimitOrder(Order& order) {
-        auto& book = order.isBuy ? bids_ : asks_;
-        auto [it, inserted] = book.emplace(order.price, PriceLevel{});
-        if (inserted) {
-            it->second.price = order.price;
+        if (order.isBuy) {
+            auto [it, inserted] = bids_.emplace(order.price, PriceLevel{});
+            if (inserted) {
+                it->second.price = order.price;
+            }
+            it->second.queue.push(order);
+        } else {
+            auto [it, inserted] = asks_.emplace(order.price, PriceLevel{});
+            if (inserted) {
+                it->second.price = order.price;
+            }
+            it->second.queue.push(order);
         }
-        it->second.queue.push(order);
     }
 
     MatchResultNative matchMarketOrder(Order& aggressor) {
@@ -62,30 +69,10 @@ public:
         }
 
         double notional = 0.0;
-        auto& passiveBook = aggressor.isBuy ? asks_ : bids_;
-        while (result.remainingQty > 0 && !passiveBook.empty()) {
-            auto levelIt = passiveBook.begin();
-            auto& queue = levelIt->second.queue;
-
-            while (result.remainingQty > 0 && !queue.orders.empty()) {
-                Order& passive = queue.orders.front();
-                std::int64_t traded = (result.remainingQty < passive.qty) ? result.remainingQty : passive.qty;
-                passive.qty -= traded;
-                queue.totalQty -= traded;
-                result.remainingQty -= traded;
-                result.filledQty += traded;
-                notional += static_cast<double>(traded) * passive.price;
-                result.lastTradePrice = passive.price;
-                result.trades += 1;
-
-                if (passive.qty == 0) {
-                    queue.orders.pop_front();
-                }
-            }
-
-            if (queue.orders.empty()) {
-                passiveBook.erase(levelIt);
-            }
+        if (aggressor.isBuy) {
+            matchAgainst(asks_, result, notional);
+        } else {
+            matchAgainst(bids_, result, notional);
         }
 
         if (result.filledQty > 0) {
@@ -110,6 +97,34 @@ public:
     }
 
 private:
+    template <typename BookMap>
+    static void matchAgainst(BookMap& passiveBook, MatchResultNative& result, double& notional) {
+        while (result.remainingQty > 0 && !passiveBook.empty()) {
+            auto levelIt = passiveBook.begin();
+            auto& queue = levelIt->second.queue;
+
+            while (result.remainingQty > 0 && !queue.orders.empty()) {
+                Order& passive = queue.orders.front();
+                std::int64_t traded = (result.remainingQty < passive.qty) ? result.remainingQty : passive.qty;
+                passive.qty -= traded;
+                queue.totalQty -= traded;
+                result.remainingQty -= traded;
+                result.filledQty += traded;
+                notional += static_cast<double>(traded) * passive.price;
+                result.lastTradePrice = passive.price;
+                result.trades += 1;
+
+                if (passive.qty == 0) {
+                    queue.orders.pop_front();
+                }
+            }
+
+            if (queue.orders.empty()) {
+                passiveBook.erase(levelIt);
+            }
+        }
+    }
+
     std::map<double, PriceLevel, std::greater<>> bids_;
     std::map<double, PriceLevel, std::less<>> asks_;
 };
