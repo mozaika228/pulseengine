@@ -125,11 +125,13 @@ jobs:
           > target/pipeline-demo.txt
 
       - name: Native backend smoke (default backend)
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
         run: >-
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
           -Dexec.classpathScope=compile
           -Dexec.mainClass=io.pulseengine.app.NativePipelineDemo
-          "-Dexec.jvmArgs=-Djava.library.path=${{ github.workspace }}/cpp/build"
 
       - name: Validate performance gates
         run: >-
