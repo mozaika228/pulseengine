@@ -22,6 +22,7 @@ and this project follows Semantic Versioning.
 - Bounded backpressure handling in Aeron transport sinks/gateways (no unbounded spin loops).
 - Lower-allocation journal replay path by reusing a single little-endian record view.
 - Native C++ order book migrated from `std::map/std::list` to contiguous level vectors with intrusive order queues.
+- Native C++ order book switched to fixed-capacity ladders and preallocated node freelist (no runtime container growth in matching hot path).
 
 ## [0.2.0] - 2026-02-20
 ### Added
