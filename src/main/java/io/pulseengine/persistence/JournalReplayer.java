@@ -27,6 +27,7 @@ public final class JournalReplayer {
 
         ByteBuffer buffer = ByteBuffer.allocateDirect(JournalCodec.RECORD_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
         byte[] record = new byte[JournalCodec.RECORD_LENGTH];
+        ByteBuffer recordView = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN);
         long replayed = 0;
 
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
@@ -57,18 +58,18 @@ public final class JournalReplayer {
                 }
 
                 byte recordType = record[JournalCodec.offRecordType()];
-                long ts = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offTs());
+                long ts = recordView.getLong(JournalCodec.offTs());
 
                 if (recordType == JournalCodec.TYPE_NEW) {
-                    long orderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offOrderId());
-                    long traderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offTraderId());
+                    long orderId = recordView.getLong(JournalCodec.offOrderId());
+                    long traderId = recordView.getLong(JournalCodec.offTraderId());
                     Side side = JournalCodec.unmapSide(record[JournalCodec.offSide()]);
                     OrderType type = JournalCodec.unmapOrderType(record[JournalCodec.offOrderType()]);
                     TimeInForce tif = JournalCodec.unmapTif(record[JournalCodec.offTif()]);
-                    long price = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offPrice());
-                    long stopPrice = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offStopPrice());
-                    long quantity = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offQuantity());
-                    long peak = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offPeak());
+                    long price = recordView.getLong(JournalCodec.offPrice());
+                    long stopPrice = recordView.getLong(JournalCodec.offStopPrice());
+                    long quantity = recordView.getLong(JournalCodec.offQuantity());
+                    long peak = recordView.getLong(JournalCodec.offPeak());
 
                     switch (type) {
                         case LIMIT -> engine.submitLimitAt(orderId, traderId, side, price, quantity, tif, peak, ts);
@@ -76,7 +77,7 @@ public final class JournalReplayer {
                         case STOP_MARKET -> engine.submitStopMarketAt(orderId, traderId, side, stopPrice, quantity, ts);
                     }
                 } else if (recordType == JournalCodec.TYPE_CANCEL) {
-                    long cancelOrderId = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN).getLong(JournalCodec.offCancelOrderId());
+                    long cancelOrderId = recordView.getLong(JournalCodec.offCancelOrderId());
                     engine.submitCancelAt(cancelOrderId, ts);
                 }
                 replayed++;

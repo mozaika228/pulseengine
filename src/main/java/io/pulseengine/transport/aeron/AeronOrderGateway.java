@@ -7,15 +7,23 @@ import io.pulseengine.core.TimeInForce;
 import org.agrona.concurrent.UnsafeBuffer;
 
 public final class AeronOrderGateway implements AutoCloseable {
+    private static final int DEFAULT_MAX_OFFER_ATTEMPTS = 1_024;
+
     private final Publication publication;
     private final UnsafeBuffer buffer = AeronOrderCodec.newBuffer();
+    private final int maxOfferAttempts;
 
     public AeronOrderGateway(Aeron aeron) {
-        this(aeron, AeronChannels.IPC_CHANNEL, AeronChannels.ORDERS_STREAM_ID);
+        this(aeron, AeronChannels.IPC_CHANNEL, AeronChannels.ORDERS_STREAM_ID, DEFAULT_MAX_OFFER_ATTEMPTS);
     }
 
     public AeronOrderGateway(Aeron aeron, String channel, int streamId) {
+        this(aeron, channel, streamId, DEFAULT_MAX_OFFER_ATTEMPTS);
+    }
+
+    public AeronOrderGateway(Aeron aeron, String channel, int streamId, int maxOfferAttempts) {
         this.publication = aeron.addPublication(channel, streamId);
+        this.maxOfferAttempts = Math.max(1, maxOfferAttempts);
     }
 
     public void submitLimit(long orderId, long traderId, Side side, long price, long quantity, TimeInForce tif, long peak) {
@@ -155,7 +163,12 @@ public final class AeronOrderGateway implements AutoCloseable {
     }
 
     private void offer() {
+        int attempts = 0;
         while (publication.offer(buffer, 0, AeronOrderCommand.FIXED_LENGTH) < 0) {
+            attempts++;
+            if (attempts >= maxOfferAttempts) {
+                throw new IllegalStateException("Aeron order publication backpressured after attempts=" + maxOfferAttempts);
+            }
             Thread.onSpinWait();
         }
     }
