@@ -1,0 +1,36 @@
+﻿{
+  "title": "PulseEngine Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Soak Ops Total",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "pulseengine_soak_ops_total", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Soak Throughput Ops",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "pulseengine_soak_throughput_ops", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Best Bid/Ask",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "pulseengine_best_bid", "refId": "A"},
+        {"expr": "pulseengine_best_ask", "refId": "B"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Parity Drift Flag",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "pulseengine_parity_drift_total", "refId": "A"}]
+    }
+  ]
+}

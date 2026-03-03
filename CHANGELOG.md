@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,7 +7,9 @@ and this project follows Semantic Versioning.
 
 ## [Unreleased]
 ### Added
-- Full order-book state snapshot store with CRC32 and fast restore support.
+- Native JNI path extended with iceberg limit orders and partial-fill visible quantity refresh.
+- Added Prometheus metrics server for soak/runtime observability (`PrometheusMetricsServer`).
+- Added ops stack and docs (`docker-compose.yml`, Prometheus, Grafana dashboard, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).`r`n- Full order-book state snapshot store with CRC32 and fast restore support.
 - Engine-level snapshot APIs: `saveStateSnapshot` and `loadStateSnapshot`.
 - Snapshot integrity unit tests.
 - JNI + C++ prototype for matching hot path (`insertLimitOrder`, `matchMarketOrder`, `publishL2Update`).
@@ -47,3 +49,6 @@ and this project follows Semantic Versioning.
 ### Changed
 - Project promoted from baseline naming to PulseEngine release line.
 - Version bumped to `0.2.0-SNAPSHOT`.
+
+
+

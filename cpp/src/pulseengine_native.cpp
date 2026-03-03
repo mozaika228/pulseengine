@@ -1,4 +1,4 @@
-#include <jni.h>
+﻿#include <jni.h>
 
 #include <stdexcept>
 
@@ -46,7 +46,28 @@ JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimit
     jboolean isBuy
 ) {
     try {
-        pulseengine::Order order{orderId, price, qty, isBuy == JNI_TRUE};
+        pulseengine::Order order{orderId, price, qty, 0, isBuy == JNI_TRUE};
+        pulseengine::fromHandle(handle)->insertLimitOrder(order);
+    } catch (const std::exception& ex) {
+        jclass rte = env->FindClass("java/lang/RuntimeException");
+        if (rte != nullptr) {
+            env->ThrowNew(rte, ex.what());
+        }
+    }
+}
+
+JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimitIceberg(
+    JNIEnv* env,
+    jclass,
+    jlong handle,
+    jlong orderId,
+    jdouble price,
+    jlong qty,
+    jlong peakQty,
+    jboolean isBuy
+) {
+    try {
+        pulseengine::Order order{orderId, price, qty, peakQty, isBuy == JNI_TRUE};
         pulseengine::fromHandle(handle)->insertLimitOrder(order);
     } catch (const std::exception& ex) {
         jclass rte = env->FindClass("java/lang/RuntimeException");
@@ -65,7 +86,7 @@ JNIEXPORT jobject JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeMatchMar
     jboolean isBuy
 ) {
     try {
-        pulseengine::Order order{orderId, 0.0, qty, isBuy == JNI_TRUE};
+        pulseengine::Order order{orderId, 0.0, qty, 0, isBuy == JNI_TRUE};
         pulseengine::MatchResultNative result = pulseengine::fromHandle(handle)->matchMarketOrder(order);
 
         jclass resultClass = pulseengine::loadClass(env, "io/pulseengine/jni/NativeOrderBook$MatchResult");

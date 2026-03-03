@@ -1,0 +1,37 @@
+﻿version: '3.9'
+services:
+  pulseengine:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ./cpp/build:/app/cpp/build
+    command: >-
+      sh -c "java -Djava.library.path=/app/cpp/build -cp target/classes io.pulseengine.app.NativeParitySoakTool 3600 20260303 9400"
+    ports:
+      - "9400:9400"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - pulseengine
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./ops/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./ops/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

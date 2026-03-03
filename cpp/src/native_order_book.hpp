@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -9,13 +9,14 @@ struct Order {
     std::int64_t orderId;
     double price;
     std::int64_t qty;
+    std::int64_t peakQty;
     bool isBuy;
 };
 
 struct OrderQueue {
     int head = -1;
     int tail = -1;
-    std::int64_t totalQty = 0;
+    std::int64_t totalVisibleQty = 0;
 
     [[nodiscard]] bool empty() const {
         return head < 0;
@@ -61,7 +62,7 @@ public:
         int pos = findLevelInsertPos(levels, levelCount, order.price, order.isBuy);
 
         if (pos < levelCount && levels[static_cast<std::size_t>(pos)].price == order.price) {
-            enqueue(levels[static_cast<std::size_t>(pos)].queue, order.orderId, order.qty);
+            enqueue(levels[static_cast<std::size_t>(pos)].queue, order.orderId, order.qty, order.peakQty);
             return;
         }
 
@@ -73,7 +74,7 @@ public:
         PriceLevel& level = levels[static_cast<std::size_t>(pos)];
         level.price = order.price;
         level.queue = OrderQueue{};
-        enqueue(level.queue, order.orderId, order.qty);
+        enqueue(level.queue, order.orderId, order.qty, order.peakQty);
         levelCount++;
     }
 
@@ -96,21 +97,26 @@ public:
                 int nodeIdx = q.head;
                 Node& node = orderPool_.at(nodeIdx);
 
-                const std::int64_t traded = (result.remainingQty < node.qty) ? result.remainingQty : node.qty;
-                node.qty -= traded;
-                q.totalQty -= traded;
+                const std::int64_t traded = (result.remainingQty < node.visibleQty) ? result.remainingQty : node.visibleQty;
+                node.openQty -= traded;
+                node.visibleQty -= traded;
+                q.totalVisibleQty -= traded;
                 result.remainingQty -= traded;
                 result.filledQty += traded;
                 result.trades += 1;
                 result.lastTradePrice = level.price;
                 notional += static_cast<double>(traded) * level.price;
 
-                if (node.qty == 0) {
+                if (node.openQty == 0) {
                     q.head = node.next;
                     if (q.head < 0) {
                         q.tail = -1;
                     }
                     orderPool_.release(nodeIdx);
+                } else if (node.visibleQty == 0 && node.peakQty > 0) {
+                    node.visibleQty = node.openQty < node.peakQty ? node.openQty : node.peakQty;
+                    q.totalVisibleQty += node.visibleQty;
+                    moveHeadToTail(q, nodeIdx);
                 }
             }
 
@@ -130,11 +136,11 @@ public:
         L2UpdateNative out{};
         if (bidCount_ > 0) {
             out.bestBid = bids_[0].price;
-            out.bestBidQty = bids_[0].queue.totalQty;
+            out.bestBidQty = bids_[0].queue.totalVisibleQty;
         }
         if (askCount_ > 0) {
             out.bestAsk = asks_[0].price;
-            out.bestAskQty = asks_[0].queue.totalQty;
+            out.bestAskQty = asks_[0].queue.totalVisibleQty;
         }
         return out;
     }
@@ -142,7 +148,9 @@ public:
 private:
     struct Node {
         std::int64_t orderId = 0;
-        std::int64_t qty = 0;
+        std::int64_t openQty = 0;
+        std::int64_t visibleQty = 0;
+        std::int64_t peakQty = 0;
         int next = -1;
     };
 
@@ -157,7 +165,7 @@ private:
             }
         }
 
-        int acquire(std::int64_t orderId, std::int64_t qty) {
+        int acquire(std::int64_t orderId, std::int64_t qty, std::int64_t peakQty) {
             if (freeTop_ == 0) {
                 return -1;
             }
@@ -165,7 +173,9 @@ private:
             int idx = freeList_[static_cast<std::size_t>(freeTop_)];
             Node& n = nodes_[static_cast<std::size_t>(idx)];
             n.orderId = orderId;
-            n.qty = qty;
+            n.openQty = qty;
+            n.peakQty = peakQty > 0 ? peakQty : 0;
+            n.visibleQty = (n.peakQty > 0 && n.peakQty < qty) ? n.peakQty : qty;
             n.next = -1;
             return idx;
         }
@@ -173,7 +183,9 @@ private:
         void release(int idx) {
             Node& n = nodes_[static_cast<std::size_t>(idx)];
             n.orderId = 0;
-            n.qty = 0;
+            n.openQty = 0;
+            n.visibleQty = 0;
+            n.peakQty = 0;
             n.next = -1;
             freeList_[static_cast<std::size_t>(freeTop_)] = idx;
             freeTop_++;
@@ -189,18 +201,32 @@ private:
         int freeTop_;
     };
 
-    void enqueue(OrderQueue& queue, std::int64_t orderId, std::int64_t qty) {
-        int idx = orderPool_.acquire(orderId, qty);
+    void enqueue(OrderQueue& queue, std::int64_t orderId, std::int64_t qty, std::int64_t peakQty) {
+        int idx = orderPool_.acquire(orderId, qty, peakQty);
         if (idx < 0) {
             return;
         }
+        Node& inserted = orderPool_.at(idx);
         if (queue.tail >= 0) {
             orderPool_.at(queue.tail).next = idx;
         } else {
             queue.head = idx;
         }
         queue.tail = idx;
-        queue.totalQty += qty;
+        queue.totalVisibleQty += inserted.visibleQty;
+    }
+
+    void moveHeadToTail(OrderQueue& queue, int headIdx) {
+        if (queue.head != headIdx || queue.tail == headIdx) {
+            return;
+        }
+        Node& head = orderPool_.at(headIdx);
+        queue.head = head.next;
+        head.next = -1;
+        if (queue.tail >= 0) {
+            orderPool_.at(queue.tail).next = headIdx;
+        }
+        queue.tail = headIdx;
     }
 
     static int findLevelInsertPos(const std::vector<PriceLevel>& levels, int count, double price, bool isBuy) {

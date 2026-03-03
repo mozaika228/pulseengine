@@ -7,6 +7,7 @@ import io.pulseengine.core.Side;
 import io.pulseengine.core.SmpPolicy;
 import io.pulseengine.core.TimeInForce;
 import io.pulseengine.jni.NativeOrderBook;
+import io.pulseengine.ops.PrometheusMetricsServer;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ public final class NativeParitySoakTool {
     public static void main(String[] args) {
         long seconds = args.length > 0 ? Long.parseLong(args[0]) : Duration.ofHours(6).toSeconds();
         long seed = args.length > 1 ? Long.parseLong(args[1]) : 20260221L;
+        int metricsPort = args.length > 2 ? Integer.parseInt(args[2]) : 9400;
 
         if (!NativeOrderBook.isNativeAvailable()) {
             throw new IllegalStateException("Native library unavailable for soak test");
@@ -33,7 +35,12 @@ public final class NativeParitySoakTool {
         long nextOrderId = 1;
         long ops = 0;
 
-        try (NativeOrderBook nativeBook = new NativeOrderBook()) {
+        try (PrometheusMetricsServer metrics = new PrometheusMetricsServer(metricsPort);
+             NativeOrderBook nativeBook = new NativeOrderBook()) {
+
+            metrics.start();
+            System.out.println("metrics_port=" + metricsPort);
+
             while (System.nanoTime() < deadline) {
                 boolean isLimit = random.nextInt(100) < 65;
                 boolean isBuy = random.nextBoolean();
@@ -44,13 +51,21 @@ public final class NativeParitySoakTool {
                     long price = isBuy
                         ? (49_850 + random.nextInt(51))
                         : (50_100 + random.nextInt(51));
-                    javaBook.process(
-                        OrderRequest.limit(orderId, 10_000 + ops, isBuy ? Side.BUY : Side.SELL, price, qty, TimeInForce.GTC),
-                        sink,
-                        SmpPolicy.NONE,
-                        ops + 1
-                    );
-                    nativeBook.insertLimitOrder(orderId, price, qty, isBuy);
+                    if (random.nextInt(100) < 15 && qty > 2) {
+                        long peak = 1 + random.nextInt((int) Math.max(1, qty / 2));
+                        OrderRequest req = OrderRequest.limit(orderId, 10_000 + ops, isBuy ? Side.BUY : Side.SELL, price, qty, TimeInForce.GTC);
+                        req.peakSize = peak;
+                        javaBook.process(req, sink, SmpPolicy.NONE, ops + 1);
+                        nativeBook.insertLimitIceberg(orderId, price, qty, peak, isBuy);
+                    } else {
+                        javaBook.process(
+                            OrderRequest.limit(orderId, 10_000 + ops, isBuy ? Side.BUY : Side.SELL, price, qty, TimeInForce.GTC),
+                            sink,
+                            SmpPolicy.NONE,
+                            ops + 1
+                        );
+                        nativeBook.insertLimitOrder(orderId, price, qty, isBuy);
+                    }
                 } else {
                     long before = sink.filledQty(orderId);
                     javaBook.process(
@@ -62,6 +77,7 @@ public final class NativeParitySoakTool {
                     long javaFilled = sink.filledQty(orderId) - before;
                     NativeOrderBook.MatchResult nativeResult = nativeBook.matchMarketOrder(orderId, qty, isBuy);
                     if (javaFilled != nativeResult.filledQty) {
+                        metrics.set("pulseengine_parity_drift_total", 1);
                         throw new IllegalStateException("Drift: filledQty java=" + javaFilled + " native=" + nativeResult.filledQty + " op=" + ops);
                     }
                 }
@@ -71,6 +87,7 @@ public final class NativeParitySoakTool {
                 long ask = Math.round(l2.bestAsk);
                 if (javaBook.bestBid() != bid || javaBook.bestAsk() != ask
                     || javaBook.bestBidQty() != l2.bestBidQty || javaBook.bestAskQty() != l2.bestAskQty) {
+                    metrics.set("pulseengine_parity_drift_total", 1);
                     throw new IllegalStateException(
                         "Drift: java=" + javaBook.bestBid() + "/" + javaBook.bestAsk()
                             + " native=" + bid + "/" + ask
@@ -81,8 +98,14 @@ public final class NativeParitySoakTool {
                 }
 
                 ops++;
+                metrics.set("pulseengine_soak_ops_total", ops);
+                metrics.set("pulseengine_best_bid", bid);
+                metrics.set("pulseengine_best_ask", ask);
+
                 if ((ops % 1_000_000) == 0) {
                     long elapsedSec = (System.nanoTime() - startNs) / 1_000_000_000L;
+                    long throughput = elapsedSec > 0 ? (ops / elapsedSec) : 0;
+                    metrics.set("pulseengine_soak_throughput_ops", throughput);
                     System.out.println("soak_ops=" + ops + " elapsed_sec=" + elapsedSec + " best_bid=" + bid + " best_ask=" + ask);
                 }
             }
@@ -131,3 +154,4 @@ public final class NativeParitySoakTool {
         }
     }
 }
+

@@ -1,0 +1,7 @@
+﻿global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'pulseengine'
+    static_configs:
+      - targets: ['pulseengine:9400']

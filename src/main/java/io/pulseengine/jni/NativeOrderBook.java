@@ -48,6 +48,11 @@ public final class NativeOrderBook implements AutoCloseable {
         nativeInsertLimitOrder(nativeHandle, orderId, price, qty, isBuy);
     }
 
+    public void insertLimitIceberg(long orderId, double price, long qty, long peakQty, boolean isBuy) {
+        ensureOpen();
+        nativeInsertLimitIceberg(nativeHandle, orderId, price, qty, peakQty, isBuy);
+    }
+
     public MatchResult matchMarketOrder(long orderId, long qty, boolean isBuy) {
         ensureOpen();
         return nativeMatchMarketOrder(nativeHandle, orderId, qty, isBuy);
@@ -133,6 +138,8 @@ public final class NativeOrderBook implements AutoCloseable {
 
     private static native void nativeInsertLimitOrder(long handle, long orderId, double price, long qty, boolean isBuy);
 
+    private static native void nativeInsertLimitIceberg(long handle, long orderId, double price, long qty, long peakQty, boolean isBuy);
+
     private static native MatchResult nativeMatchMarketOrder(long handle, long orderId, long qty, boolean isBuy);
 
     private static native L2Update nativePublishL2Update(long handle);
@@ -175,3 +182,4 @@ public final class NativeOrderBook implements AutoCloseable {
         }
     }
 }
+

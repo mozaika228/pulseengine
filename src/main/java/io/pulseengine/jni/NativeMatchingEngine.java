@@ -12,6 +12,10 @@ public final class NativeMatchingEngine implements AutoCloseable {
         delegate.insertLimitOrder(orderId, price, qty, isBuy);
     }
 
+    public void insertLimitIceberg(long orderId, double price, long qty, long peakQty, boolean isBuy) {
+        delegate.insertLimitIceberg(orderId, price, qty, peakQty, isBuy);
+    }
+
     public MatchResult matchMarketOrder(long orderId, long qty, boolean isBuy) {
         NativeOrderBook.MatchResult result = delegate.matchMarketOrder(orderId, qty, isBuy);
         return new MatchResult(result.filledQty, result.remainingQty, result.trades, result.avgPrice, result.lastTradePrice);
@@ -57,3 +61,4 @@ public final class NativeMatchingEngine implements AutoCloseable {
         }
     }
 }
+
