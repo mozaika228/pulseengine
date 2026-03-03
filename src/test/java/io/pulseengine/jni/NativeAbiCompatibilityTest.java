@@ -10,7 +10,7 @@ class NativeAbiCompatibilityTest {
 
     @Test
     void javaSideContractIsPinned() {
-        assertEquals(1, NativeOrderBook.CLIENT_API_VERSION);
+        assertEquals(2, NativeOrderBook.CLIENT_API_VERSION);
         assertEquals(1, NativeOrderBook.CLIENT_MIN_COMPATIBLE_API_VERSION);
         assertEquals(1, NativeOrderBinaryLayout.VERSION);
         assertEquals(-1916503777, NativeOrderBinaryLayout.HASH);

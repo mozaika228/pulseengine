@@ -37,6 +37,8 @@ and this project follows Semantic Versioning.
 - Added per-PR performance regression report artifact (`perf-regression-report`).
 - Added pre-trade risk gateway (RiskCheckedEngineGateway) with explicit reject codes for rate-limit, fat-finger, and position-limit checks.
 - Added deterministic unit tests for risk controls (RiskValidationTest).
+- Added native insert status contract (explicit overflow/invalid reject codes) and capacity-aware JNI constructor (`NativeOrderBook(int maxLevels, int maxOrders)`).
+- Bumped JNI/native API compatibility version to `2` and added native overflow status test coverage.
 
 ## [0.2.0] - 2026-02-20
 ### Added

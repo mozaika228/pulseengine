@@ -52,7 +52,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=capture target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=restore target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
 
-## High-performance C++ core (experimental)
+## High-performance C++ core (hardened experimental)
 - Java wrapper: `src/main/java/io/pulseengine/jni/NativeOrderBook.java`
 - Backward-compatible wrapper: `src/main/java/io/pulseengine/jni/NativeMatchingEngine.java`
 - ABI/layout contract: `src/main/java/io/pulseengine/jni/NativeOrderBinaryLayout.java` + runtime JNI compatibility check
@@ -67,7 +67,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Runtime:
   - place `pulseengine_native.dll`/`libpulseengine_native.so` on `java.library.path`
   - use `io.pulseengine.jni.NativeOrderBook` in the Java pipeline ingress/hot path
-  - startup validates native ABI (`native_api_version`, `native_min_compatible_api_version`) and binary layout hash/version
+  - startup validates native ABI (`native_api_version`, `native_min_compatible_api_version`) and binary layout hash/version (current client API: `2`)
 - Integration demo:
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativePipelineDemo"`
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativeDisruptorDemo"`
@@ -78,6 +78,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=test" "-Dexec.mainClass=org.openjdk.jmh.Main" "-Dexec.args=NativeVsJavaBenchmark.* -wi 3 -i 5 -f 0 -tu ns"`
 - C++ Google Benchmark (insert-limit):
   - `./cpp/build/order_book_insert_bench --benchmark_format=json --benchmark_out=cpp/build/order_book_insert_bench.json`
+- Native insert status API: `tryInsertLimitOrder` / `tryInsertLimitIceberg` returns explicit reject codes (`INVALID_QTY`, `BOOK_LEVELS_FULL`, `ORDER_POOL_EXHAUSTED`) instead of silent fallback.
 - Property/fuzz parity test (Java vs native):
   - `mvn -q -Dtest=NativeParityFuzzTest test`
 - Soak parity tool (default 6h):

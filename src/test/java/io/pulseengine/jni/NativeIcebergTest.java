@@ -29,4 +29,15 @@ class NativeIcebergTest {
             assertEquals(3, afterRefresh.bestAskQty);
         }
     }
+
+    @Test
+    void explicitStatusCodesReturnedOnNativeCapacityOverflow() {
+        Assumptions.assumeTrue(NativeOrderBook.isNativeAvailable(), "Native library unavailable");
+
+        try (NativeOrderBook book = new NativeOrderBook(1, 1)) {
+            assertEquals(NativeOrderBook.INSERT_OK, book.tryInsertLimitOrder(1, 50_000, 10, true));
+            assertEquals(NativeOrderBook.INSERT_BOOK_LEVELS_FULL, book.tryInsertLimitOrder(2, 49_900, 10, true));
+            assertEquals(NativeOrderBook.INSERT_ORDER_POOL_EXHAUSTED, book.tryInsertLimitOrder(3, 50_000, 10, true));
+        }
+    }
 }

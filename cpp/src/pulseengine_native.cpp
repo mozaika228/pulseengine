@@ -1,4 +1,4 @@
-﻿#include <jni.h>
+#include <jni.h>
 
 #include <stdexcept>
 
@@ -22,6 +22,13 @@ static jclass loadClass(JNIEnv* env, const char* binaryName) {
     return cls;
 }
 
+static void throwRuntime(JNIEnv* env, const char* message) {
+    jclass rte = env->FindClass("java/lang/RuntimeException");
+    if (rte != nullptr) {
+        env->ThrowNew(rte, message);
+    }
+}
+
 } // namespace pulseengine
 
 extern "C" {
@@ -31,12 +38,30 @@ JNIEXPORT jlong JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeCreate(JNI
     return reinterpret_cast<jlong>(engine);
 }
 
+JNIEXPORT jlong JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeCreateWithCapacity(
+    JNIEnv* env,
+    jclass,
+    jint maxLevels,
+    jint maxOrders
+) {
+    try {
+        if (maxLevels <= 0 || maxOrders <= 0) {
+            throw std::invalid_argument("maxLevels/maxOrders must be positive");
+        }
+        auto* engine = new pulseengine::OrderBook(static_cast<std::size_t>(maxLevels), static_cast<std::size_t>(maxOrders));
+        return reinterpret_cast<jlong>(engine);
+    } catch (const std::exception& ex) {
+        pulseengine::throwRuntime(env, ex.what());
+        return 0;
+    }
+}
+
 JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeDestroy(JNIEnv*, jclass, jlong handle) {
     auto* engine = reinterpret_cast<pulseengine::OrderBook*>(handle);
     delete engine;
 }
 
-JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimitOrder(
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimitOrder(
     JNIEnv* env,
     jclass,
     jlong handle,
@@ -47,16 +72,15 @@ JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimit
 ) {
     try {
         pulseengine::Order order{orderId, price, qty, 0, isBuy == JNI_TRUE};
-        pulseengine::fromHandle(handle)->insertLimitOrder(order);
+        pulseengine::InsertStatusNative status = pulseengine::fromHandle(handle)->insertLimitOrder(order);
+        return static_cast<jint>(status);
     } catch (const std::exception& ex) {
-        jclass rte = env->FindClass("java/lang/RuntimeException");
-        if (rte != nullptr) {
-            env->ThrowNew(rte, ex.what());
-        }
+        pulseengine::throwRuntime(env, ex.what());
+        return -1;
     }
 }
 
-JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimitIceberg(
+JNIEXPORT jint JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimitIceberg(
     JNIEnv* env,
     jclass,
     jlong handle,
@@ -68,12 +92,11 @@ JNIEXPORT void JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeInsertLimit
 ) {
     try {
         pulseengine::Order order{orderId, price, qty, peakQty, isBuy == JNI_TRUE};
-        pulseengine::fromHandle(handle)->insertLimitOrder(order);
+        pulseengine::InsertStatusNative status = pulseengine::fromHandle(handle)->insertLimitOrder(order);
+        return static_cast<jint>(status);
     } catch (const std::exception& ex) {
-        jclass rte = env->FindClass("java/lang/RuntimeException");
-        if (rte != nullptr) {
-            env->ThrowNew(rte, ex.what());
-        }
+        pulseengine::throwRuntime(env, ex.what());
+        return -1;
     }
 }
 
@@ -101,10 +124,7 @@ JNIEXPORT jobject JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativeMatchMar
             static_cast<jdouble>(result.lastTradePrice)
         );
     } catch (const std::exception& ex) {
-        jclass rte = env->FindClass("java/lang/RuntimeException");
-        if (rte != nullptr) {
-            env->ThrowNew(rte, ex.what());
-        }
+        pulseengine::throwRuntime(env, ex.what());
         return nullptr;
     }
 }
@@ -128,10 +148,7 @@ JNIEXPORT jobject JNICALL Java_io_pulseengine_jni_NativeOrderBook_nativePublishL
             static_cast<jlong>(update.bestAskQty)
         );
     } catch (const std::exception& ex) {
-        jclass rte = env->FindClass("java/lang/RuntimeException");
-        if (rte != nullptr) {
-            env->ThrowNew(rte, ex.what());
-        }
+        pulseengine::throwRuntime(env, ex.what());
         return nullptr;
     }
 }

@@ -1,8 +1,13 @@
 package io.pulseengine.jni;
 
 public final class NativeOrderBook implements AutoCloseable {
-    public static final int CLIENT_API_VERSION = 1;
+    public static final int CLIENT_API_VERSION = 2;
     public static final int CLIENT_MIN_COMPATIBLE_API_VERSION = 1;
+
+    public static final int INSERT_OK = 0;
+    public static final int INSERT_INVALID_QTY = 1;
+    public static final int INSERT_BOOK_LEVELS_FULL = 2;
+    public static final int INSERT_ORDER_POOL_EXHAUSTED = 3;
 
     private static final Throwable LOAD_ERROR;
     private static final int LOADED_API_VERSION;
@@ -36,21 +41,38 @@ public final class NativeOrderBook implements AutoCloseable {
     private long nativeHandle;
 
     public NativeOrderBook() {
+        this(1024, 16384);
+    }
+
+    public NativeOrderBook(int maxLevels, int maxOrders) {
         ensureNativeAvailable();
-        nativeHandle = nativeCreate();
+        if (maxLevels <= 0 || maxOrders <= 0) {
+            throw new IllegalArgumentException("maxLevels and maxOrders must be positive");
+        }
+        nativeHandle = nativeCreateWithCapacity(maxLevels, maxOrders);
         if (nativeHandle == 0) {
             throw new IllegalStateException("Failed to create native order book");
         }
     }
 
     public void insertLimitOrder(long orderId, double price, long qty, boolean isBuy) {
+        int status = tryInsertLimitOrder(orderId, price, qty, isBuy);
+        ensureInsertOk(status, "insertLimitOrder");
+    }
+
+    public int tryInsertLimitOrder(long orderId, double price, long qty, boolean isBuy) {
         ensureOpen();
-        nativeInsertLimitOrder(nativeHandle, orderId, price, qty, isBuy);
+        return nativeInsertLimitOrder(nativeHandle, orderId, price, qty, isBuy);
     }
 
     public void insertLimitIceberg(long orderId, double price, long qty, long peakQty, boolean isBuy) {
+        int status = tryInsertLimitIceberg(orderId, price, qty, peakQty, isBuy);
+        ensureInsertOk(status, "insertLimitIceberg");
+    }
+
+    public int tryInsertLimitIceberg(long orderId, double price, long qty, long peakQty, boolean isBuy) {
         ensureOpen();
-        nativeInsertLimitIceberg(nativeHandle, orderId, price, qty, peakQty, isBuy);
+        return nativeInsertLimitIceberg(nativeHandle, orderId, price, qty, peakQty, isBuy);
     }
 
     public MatchResult matchMarketOrder(long orderId, long qty, boolean isBuy) {
@@ -132,13 +154,21 @@ public final class NativeOrderBook implements AutoCloseable {
         }
     }
 
+    private static void ensureInsertOk(int status, String operation) {
+        if (status != INSERT_OK) {
+            throw new IllegalStateException(operation + " rejected by native core, status=" + status);
+        }
+    }
+
     private static native long nativeCreate();
+
+    private static native long nativeCreateWithCapacity(int maxLevels, int maxOrders);
 
     private static native void nativeDestroy(long handle);
 
-    private static native void nativeInsertLimitOrder(long handle, long orderId, double price, long qty, boolean isBuy);
+    private static native int nativeInsertLimitOrder(long handle, long orderId, double price, long qty, boolean isBuy);
 
-    private static native void nativeInsertLimitIceberg(long handle, long orderId, double price, long qty, long peakQty, boolean isBuy);
+    private static native int nativeInsertLimitIceberg(long handle, long orderId, double price, long qty, long peakQty, boolean isBuy);
 
     private static native MatchResult nativeMatchMarketOrder(long handle, long orderId, long qty, boolean isBuy);
 
@@ -182,4 +212,3 @@ public final class NativeOrderBook implements AutoCloseable {
         }
     }
 }
-

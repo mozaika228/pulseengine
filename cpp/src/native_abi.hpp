@@ -2,7 +2,7 @@
 
 namespace pulseengine {
 
-constexpr int NATIVE_API_VERSION = 1;
+constexpr int NATIVE_API_VERSION = 2;
 constexpr int NATIVE_MIN_COMPATIBLE_API_VERSION = 1;
 
 constexpr int NATIVE_COMMAND_LAYOUT_VERSION = 1;

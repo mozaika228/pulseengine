@@ -1,9 +1,16 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <vector>
 
 namespace pulseengine {
+
+enum class InsertStatusNative : std::int32_t {
+    OK = 0,
+    INVALID_QTY = 1,
+    BOOK_LEVELS_FULL = 2,
+    ORDER_POOL_EXHAUSTED = 3,
+};
 
 struct Order {
     std::int64_t orderId;
@@ -52,9 +59,9 @@ public:
           orderPool_(maxOrders) {
     }
 
-    void insertLimitOrder(Order& order) {
+    [[nodiscard]] InsertStatusNative insertLimitOrder(Order& order) {
         if (order.qty <= 0) {
-            return;
+            return InsertStatusNative::INVALID_QTY;
         }
 
         std::vector<PriceLevel>& levels = order.isBuy ? bids_ : asks_;
@@ -62,20 +69,27 @@ public:
         int pos = findLevelInsertPos(levels, levelCount, order.price, order.isBuy);
 
         if (pos < levelCount && levels[static_cast<std::size_t>(pos)].price == order.price) {
-            enqueue(levels[static_cast<std::size_t>(pos)].queue, order.orderId, order.qty, order.peakQty);
-            return;
+            return enqueue(levels[static_cast<std::size_t>(pos)].queue, order.orderId, order.qty, order.peakQty)
+                ? InsertStatusNative::OK
+                : InsertStatusNative::ORDER_POOL_EXHAUSTED;
         }
 
         if (levelCount >= maxLevels_) {
-            return;
+            return InsertStatusNative::BOOK_LEVELS_FULL;
         }
 
         shiftRight(levels, levelCount, pos);
         PriceLevel& level = levels[static_cast<std::size_t>(pos)];
         level.price = order.price;
         level.queue = OrderQueue{};
-        enqueue(level.queue, order.orderId, order.qty, order.peakQty);
+
+        if (!enqueue(level.queue, order.orderId, order.qty, order.peakQty)) {
+            shiftLeft(levels, levelCount + 1, pos);
+            return InsertStatusNative::ORDER_POOL_EXHAUSTED;
+        }
+
         levelCount++;
+        return InsertStatusNative::OK;
     }
 
     MatchResultNative matchMarketOrder(Order& aggressor) {
@@ -201,10 +215,10 @@ private:
         int freeTop_;
     };
 
-    void enqueue(OrderQueue& queue, std::int64_t orderId, std::int64_t qty, std::int64_t peakQty) {
+    bool enqueue(OrderQueue& queue, std::int64_t orderId, std::int64_t qty, std::int64_t peakQty) {
         int idx = orderPool_.acquire(orderId, qty, peakQty);
         if (idx < 0) {
-            return;
+            return false;
         }
         Node& inserted = orderPool_.at(idx);
         if (queue.tail >= 0) {
@@ -214,6 +228,7 @@ private:
         }
         queue.tail = idx;
         queue.totalVisibleQty += inserted.visibleQty;
+        return true;
     }
 
     void moveHeadToTail(OrderQueue& queue, int headIdx) {
