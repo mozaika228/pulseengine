@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -9,7 +9,8 @@ and this project follows Semantic Versioning.
 ### Added
 - Native JNI path extended with iceberg limit orders and partial-fill visible quantity refresh.
 - Added Prometheus metrics server for soak/runtime observability (`PrometheusMetricsServer`).
-- Added ops stack and docs (`docker-compose.yml`, Prometheus, Grafana dashboard, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).`r`n- Full order-book state snapshot store with CRC32 and fast restore support.
+- Added ops stack and docs (`docker-compose.yml`, Prometheus, Grafana dashboard, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).
+- Full order-book state snapshot store with CRC32 and fast restore support.
 - Engine-level snapshot APIs: `saveStateSnapshot` and `loadStateSnapshot`.
 - Snapshot integrity unit tests.
 - JNI + C++ prototype for matching hot path (`insertLimitOrder`, `matchMarketOrder`, `publishL2Update`).
@@ -34,6 +35,8 @@ and this project follows Semantic Versioning.
 - Added restart parity coverage for coordinated recovery (`snapshot + catch-up + restart + re-snapshot + second restart`).
 - Added CI performance gate validator (`scripts/perf/validate_perf.py`) with blocking thresholds for JMH, latency percentiles, throughput, and C++ benchmark.
 - Added per-PR performance regression report artifact (`perf-regression-report`).
+- Added pre-trade risk gateway (RiskCheckedEngineGateway) with explicit reject codes for rate-limit, fat-finger, and position-limit checks.
+- Added deterministic unit tests for risk controls (RiskValidationTest).
 
 ## [0.2.0] - 2026-02-20
 ### Added
