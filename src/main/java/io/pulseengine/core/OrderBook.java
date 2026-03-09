@@ -4,30 +4,77 @@ import org.agrona.collections.Long2ObjectHashMap;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayDeque;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.NavigableMap;
-import java.util.TreeMap;
 
 public final class OrderBook {
-    private static final int SNAPSHOT_MAGIC = 0x50455331; // PES1
+    private static final int SNAPSHOT_MAGIC = 0x50455331;
     private static final int SNAPSHOT_VERSION = 1;
     private static final int SNAPSHOT_HEADER_BYTES = 4 + 4 + 8 + 8 + 4 + 4 + 4;
     private static final int SNAPSHOT_ORDER_BYTES = 8 + 8 + 1 + 8 + 8 + 8 + 8 + 8;
     private static final int SNAPSHOT_STOP_BYTES = 8 + 8 + 1 + 8 + 8;
 
-    private final NavigableMap<Long, PriceLevel> bids = new TreeMap<>(Comparator.reverseOrder());
-    private final NavigableMap<Long, PriceLevel> asks = new TreeMap<>();
-    private final Long2ObjectHashMap<BookOrder> liveOrders = new Long2ObjectHashMap<>();
+    private static final int DEFAULT_MAX_LEVELS_PER_SIDE = 4096;
+    private static final int DEFAULT_MAX_ORDERS = 262144;
+    private static final int DEFAULT_MAX_STOPS_PER_SIDE = 65536;
 
-    private final Deque<BookOrder> orderPool = new ArrayDeque<>();
-    private final Deque<StopOrder> stopBuys = new ArrayDeque<>();
-    private final Deque<StopOrder> stopSells = new ArrayDeque<>();
-    private final Deque<StopOrder> stopPool = new ArrayDeque<>();
+    private final int maxLevelsPerSide;
+    private final PriceLevel[] bids;
+    private final PriceLevel[] asks;
+    private final PriceLevel[] bidLevelPool;
+    private final PriceLevel[] askLevelPool;
+    private int freeBidLevels;
+    private int freeAskLevels;
 
+    private final Long2ObjectHashMap<BookOrder> liveOrders;
+    private final BookOrder[] orderPool;
+    private int freeOrders;
+
+    private final StopOrder[] stopPool;
+    private int freeStops;
+    private final StopQueue stopBuys;
+    private final StopQueue stopSells;
+
+    private int bidCount;
+    private int askCount;
     private long tradeSeq;
     private long lastTradePrice;
+
+    public OrderBook() {
+        this(DEFAULT_MAX_LEVELS_PER_SIDE, DEFAULT_MAX_ORDERS, DEFAULT_MAX_STOPS_PER_SIDE);
+    }
+
+    public OrderBook(int maxLevelsPerSide, int maxOrders, int maxStopsPerSide) {
+        if (maxLevelsPerSide <= 0 || maxOrders <= 0 || maxStopsPerSide <= 0) {
+            throw new IllegalArgumentException("OrderBook capacities must be positive");
+        }
+
+        this.maxLevelsPerSide = maxLevelsPerSide;
+        this.bids = new PriceLevel[maxLevelsPerSide];
+        this.asks = new PriceLevel[maxLevelsPerSide];
+        this.bidLevelPool = new PriceLevel[maxLevelsPerSide];
+        this.askLevelPool = new PriceLevel[maxLevelsPerSide];
+        this.freeBidLevels = maxLevelsPerSide;
+        this.freeAskLevels = maxLevelsPerSide;
+        for (int i = 0; i < maxLevelsPerSide; i++) {
+            bidLevelPool[i] = new PriceLevel();
+            askLevelPool[i] = new PriceLevel();
+        }
+
+        int mapCapacity = Math.max(8, maxOrders * 2);
+        this.liveOrders = new Long2ObjectHashMap<>(mapCapacity, 0.65f);
+        this.orderPool = new BookOrder[maxOrders];
+        this.freeOrders = maxOrders;
+        for (int i = 0; i < maxOrders; i++) {
+            orderPool[i] = new BookOrder();
+        }
+
+        this.stopPool = new StopOrder[maxStopsPerSide * 2];
+        this.freeStops = stopPool.length;
+        for (int i = 0; i < stopPool.length; i++) {
+            stopPool[i] = new StopOrder();
+        }
+        this.stopBuys = new StopQueue(maxStopsPerSide);
+        this.stopSells = new StopQueue(maxStopsPerSide);
+    }
 
     public void process(OrderRequest req, MatchEventSink sink, SmpPolicy smpPolicy, long tsNanos) {
         if (req.quantity <= 0) {
@@ -50,6 +97,11 @@ public final class OrderBook {
         }
 
         BookOrder aggressor = borrowOrder();
+        if (aggressor == null) {
+            sink.onOrderRejected(req.orderId, RejectCode.CAPACITY_EXCEEDED, tsNanos);
+            return;
+        }
+
         aggressor.init(req);
         aggressor.priceTicks = effectivePrice;
 
@@ -64,9 +116,13 @@ public final class OrderBook {
         } else {
             aggressor.openQty = remaining;
             aggressor.visibleQty = aggressor.isIceberg() ? Math.min(aggressor.peakSize, remaining) : remaining;
-            addToBook(aggressor);
-            liveOrders.put(aggressor.orderId, aggressor);
-            sink.onOrderAccepted(req.orderId, remaining, tsNanos);
+            if (!addToBook(aggressor)) {
+                sink.onOrderRejected(req.orderId, RejectCode.CAPACITY_EXCEEDED, tsNanos);
+                recycleOrder(aggressor);
+            } else {
+                liveOrders.put(aggressor.orderId, aggressor);
+                sink.onOrderAccepted(req.orderId, remaining, tsNanos);
+            }
         }
 
         activateStops(sink, smpPolicy, tsNanos);
@@ -77,10 +133,11 @@ public final class OrderBook {
         if (order == null) {
             return false;
         }
+
         PriceLevel level = order.level;
         level.remove(order);
         if (level.isEmpty()) {
-            bookSide(order.side).remove(level.priceTicks);
+            removeEmptyLevel(order.side, level.priceTicks);
         }
         sink.onOrderCanceled(orderId, order.openQty, tsNanos);
         recycleOrder(order);
@@ -88,10 +145,11 @@ public final class OrderBook {
     }
 
     private long match(BookOrder aggressor, MatchEventSink sink, SmpPolicy smpPolicy, long tsNanos) {
-        NavigableMap<Long, PriceLevel> passiveBook = aggressor.side == Side.BUY ? asks : bids;
+        PriceLevel[] passiveLevels = aggressor.side == Side.BUY ? asks : bids;
+        int passiveCount = aggressor.side == Side.BUY ? askCount : bidCount;
 
-        while (aggressor.openQty > 0 && !passiveBook.isEmpty()) {
-            PriceLevel bestLevel = passiveBook.firstEntry().getValue();
+        while (aggressor.openQty > 0 && passiveCount > 0) {
+            PriceLevel bestLevel = passiveLevels[0];
             if (!crosses(aggressor.side, aggressor.priceTicks, bestLevel.priceTicks)) {
                 break;
             }
@@ -100,6 +158,7 @@ public final class OrderBook {
             while (passive != null && aggressor.openQty > 0) {
                 BookOrder nextPassive = passive.next;
                 if (smpPolicy == SmpPolicy.CANCEL_AGGRESSOR && passive.traderId == aggressor.traderId) {
+                    updatePassiveCount(aggressor.side, passiveCount);
                     return aggressor.openQty;
                 }
 
@@ -107,6 +166,7 @@ public final class OrderBook {
                 aggressor.openQty -= tradeQty;
                 passive.openQty -= tradeQty;
                 passive.visibleQty -= tradeQty;
+                bestLevel.totalVisibleQty -= tradeQty;
                 lastTradePrice = bestLevel.priceTicks;
 
                 long tradeId = ++tradeSeq;
@@ -121,6 +181,7 @@ public final class OrderBook {
                     recycleOrder(passive);
                 } else if (passive.visibleQty == 0 && passive.isIceberg()) {
                     passive.visibleQty = Math.min(passive.peakSize, passive.openQty);
+                    bestLevel.totalVisibleQty += passive.visibleQty;
                     bestLevel.moveToTail(passive);
                     sink.onOrderPartiallyFilled(passive.orderId, passive.openQty, tsNanos);
                 } else {
@@ -130,11 +191,22 @@ public final class OrderBook {
             }
 
             if (bestLevel.isEmpty()) {
-                passiveBook.remove(bestLevel.priceTicks);
+                passiveCount = removeFirstLevel(aggressor.side == Side.BUY ? Side.SELL : Side.BUY);
+            } else {
+                passiveCount = aggressor.side == Side.BUY ? askCount : bidCount;
             }
         }
 
+        updatePassiveCount(aggressor.side, passiveCount);
         return aggressor.openQty;
+    }
+
+    private void updatePassiveCount(Side aggressorSide, int passiveCount) {
+        if (aggressorSide == Side.BUY) {
+            askCount = passiveCount;
+        } else {
+            bidCount = passiveCount;
+        }
     }
 
     private boolean crosses(Side side, long aggressorPrice, long passivePrice) {
@@ -146,50 +218,103 @@ public final class OrderBook {
 
     private boolean canFullyFill(Side side, OrderType type, long priceTicks, long quantity) {
         long need = quantity;
-        NavigableMap<Long, PriceLevel> passiveBook = side == Side.BUY ? asks : bids;
+        PriceLevel[] passiveLevels = side == Side.BUY ? asks : bids;
+        int passiveCount = side == Side.BUY ? askCount : bidCount;
 
-        for (PriceLevel level : passiveBook.values()) {
+        for (int i = 0; i < passiveCount; i++) {
+            PriceLevel level = passiveLevels[i];
             if (type == OrderType.LIMIT && !crosses(side, priceTicks, level.priceTicks)) {
                 break;
             }
-            BookOrder order = level.head;
-            while (order != null && need > 0) {
-                need -= order.visibleQty;
-                order = order.next;
-            }
+            need -= level.totalVisibleQty();
             if (need <= 0) {
                 return true;
             }
         }
         return false;
-    }
+    }    private boolean addToBook(BookOrder order) {
+        PriceLevel[] sideBook = levelsFor(order.side);
+        int count = levelCount(order.side);
+        int pos = findInsertPos(sideBook, count, order.priceTicks, order.side == Side.BUY);
 
-    private void addToBook(BookOrder order) {
-        NavigableMap<Long, PriceLevel> sideBook = bookSide(order.side);
-        PriceLevel level = sideBook.get(order.priceTicks);
-        if (level == null) {
-            level = new PriceLevel(order.priceTicks);
-            sideBook.put(order.priceTicks, level);
+        PriceLevel level;
+        if (pos < count && sideBook[pos].priceTicks == order.priceTicks) {
+            level = sideBook[pos];
+        } else {
+            if (count >= maxLevelsPerSide) {
+                return false;
+            }
+            level = borrowLevel(order.side);
+            if (level == null) {
+                return false;
+            }
+            level.init(order.priceTicks);
+            shiftRight(sideBook, count, pos);
+            sideBook[pos] = level;
+            count++;
+            setLevelCount(order.side, count);
         }
         level.addLast(order);
+        return true;
     }
 
-    private NavigableMap<Long, PriceLevel> bookSide(Side side) {
+    private int removeFirstLevel(Side side) {
+        PriceLevel[] sideBook = levelsFor(side);
+        int count = levelCount(side);
+        recycleLevel(side, sideBook[0]);
+        shiftLeft(sideBook, count, 0);
+        count--;
+        setLevelCount(side, count);
+        return count;
+    }
+
+    private void removeEmptyLevel(Side side, long priceTicks) {
+        PriceLevel[] sideBook = levelsFor(side);
+        int count = levelCount(side);
+        for (int i = 0; i < count; i++) {
+            if (sideBook[i].priceTicks == priceTicks) {
+                recycleLevel(side, sideBook[i]);
+                shiftLeft(sideBook, count, i);
+                setLevelCount(side, count - 1);
+                return;
+            }
+        }
+    }
+
+    private PriceLevel[] levelsFor(Side side) {
         return side == Side.BUY ? bids : asks;
+    }
+
+    private int levelCount(Side side) {
+        return side == Side.BUY ? bidCount : askCount;
+    }
+
+    private void setLevelCount(Side side, int count) {
+        if (side == Side.BUY) {
+            bidCount = count;
+        } else {
+            askCount = count;
+        }
     }
 
     private void enqueueStop(OrderRequest req, MatchEventSink sink, long tsNanos) {
         StopOrder stop = borrowStop();
+        if (stop == null) {
+            sink.onOrderRejected(req.orderId, RejectCode.CAPACITY_EXCEEDED, tsNanos);
+            return;
+        }
+
         stop.orderId = req.orderId;
         stop.traderId = req.traderId;
         stop.side = req.side;
         stop.stopPriceTicks = req.stopPriceTicks;
         stop.quantity = req.quantity;
 
-        if (req.side == Side.BUY) {
-            stopBuys.addLast(stop);
-        } else {
-            stopSells.addLast(stop);
+        StopQueue queue = req.side == Side.BUY ? stopBuys : stopSells;
+        if (!queue.offer(stop)) {
+            recycleStop(stop);
+            sink.onOrderRejected(req.orderId, RejectCode.CAPACITY_EXCEEDED, tsNanos);
+            return;
         }
         sink.onOrderAccepted(req.orderId, req.quantity, tsNanos);
     }
@@ -199,31 +324,42 @@ public final class OrderBook {
             return;
         }
 
-        int buyCount = stopBuys.size();
-        for (int i = 0; i < buyCount; i++) {
-            StopOrder stop = stopBuys.removeFirst();
+        int buyCountSnapshot = stopBuys.size();
+        for (int i = 0; i < buyCountSnapshot; i++) {
+            StopOrder stop = stopBuys.pollFirst();
+            if (stop == null) {
+                break;
+            }
             if (lastTradePrice >= stop.stopPriceTicks) {
                 executeTriggeredStop(stop, sink, smpPolicy, tsNanos);
                 recycleStop(stop);
             } else {
-                stopBuys.addLast(stop);
+                stopBuys.offer(stop);
             }
         }
 
-        int sellCount = stopSells.size();
-        for (int i = 0; i < sellCount; i++) {
-            StopOrder stop = stopSells.removeFirst();
+        int sellCountSnapshot = stopSells.size();
+        for (int i = 0; i < sellCountSnapshot; i++) {
+            StopOrder stop = stopSells.pollFirst();
+            if (stop == null) {
+                break;
+            }
             if (lastTradePrice <= stop.stopPriceTicks) {
                 executeTriggeredStop(stop, sink, smpPolicy, tsNanos);
                 recycleStop(stop);
             } else {
-                stopSells.addLast(stop);
+                stopSells.offer(stop);
             }
         }
     }
 
     private void executeTriggeredStop(StopOrder stop, MatchEventSink sink, SmpPolicy smpPolicy, long tsNanos) {
         BookOrder aggressor = borrowOrder();
+        if (aggressor == null) {
+            sink.onOrderRejected(stop.orderId, RejectCode.CAPACITY_EXCEEDED, tsNanos);
+            return;
+        }
+
         aggressor.orderId = stop.orderId;
         aggressor.traderId = stop.traderId;
         aggressor.side = stop.side;
@@ -242,67 +378,45 @@ public final class OrderBook {
     }
 
     public long bestBid() {
-        return bids.isEmpty() ? 0 : bids.firstKey();
+        return bidCount == 0 ? 0 : bids[0].priceTicks;
     }
 
     public long bestBidQty() {
-        if (bids.isEmpty()) {
-            return 0;
-        }
-        PriceLevel level = bids.firstEntry().getValue();
-        return level.head == null ? 0 : level.head.visibleQty;
+        return bidCount == 0 ? 0 : bids[0].totalVisibleQty();
     }
 
     public long bestAsk() {
-        return asks.isEmpty() ? 0 : asks.firstKey();
+        return askCount == 0 ? 0 : asks[0].priceTicks;
     }
 
     public long bestAskQty() {
-        if (asks.isEmpty()) {
-            return 0;
-        }
-        PriceLevel level = asks.firstEntry().getValue();
-        return level.head == null ? 0 : level.head.visibleQty;
+        return askCount == 0 ? 0 : asks[0].totalVisibleQty();
     }
 
-    public int snapshotDepth(
-        int depth,
-        long[] bidPx,
-        long[] bidQty,
-        long[] askPx,
-        long[] askQty
-    ) {
-        int bidCount = 0;
-        for (PriceLevel level : bids.values()) {
-            if (bidCount >= depth) {
-                break;
-            }
-            bidPx[bidCount] = level.priceTicks;
-            bidQty[bidCount] = level.totalVisibleQty();
-            bidCount++;
+    public int snapshotDepth(int depth, long[] bidPx, long[] bidQty, long[] askPx, long[] askQty) {
+        int bidDepth = Math.min(depth, bidCount);
+        for (int i = 0; i < bidDepth; i++) {
+            bidPx[i] = bids[i].priceTicks;
+            bidQty[i] = bids[i].totalVisibleQty();
         }
 
-        int askCount = 0;
-        for (PriceLevel level : asks.values()) {
-            if (askCount >= depth) {
-                break;
-            }
-            askPx[askCount] = level.priceTicks;
-            askQty[askCount] = level.totalVisibleQty();
-            askCount++;
+        int askDepth = Math.min(depth, askCount);
+        for (int i = 0; i < askDepth; i++) {
+            askPx[i] = asks[i].priceTicks;
+            askQty[i] = asks[i].totalVisibleQty();
         }
-        return Math.min(bidCount, askCount);
+        return Math.min(bidDepth, askDepth);
     }
 
     public int snapshotSizeBytes() {
-        int live = liveOrderCount();
+        int live = liveOrders.size();
         return SNAPSHOT_HEADER_BYTES + (live * SNAPSHOT_ORDER_BYTES) + ((stopBuys.size() + stopSells.size()) * SNAPSHOT_STOP_BYTES);
     }
 
     public void writeSnapshot(ByteBuffer buffer) {
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        int live = liveOrderCount();
+        int live = liveOrders.size();
         int buyStops = stopBuys.size();
         int sellStops = stopSells.size();
         int required = SNAPSHOT_HEADER_BYTES + (live * SNAPSHOT_ORDER_BYTES) + ((buyStops + sellStops) * SNAPSHOT_STOP_BYTES);
@@ -318,8 +432,8 @@ public final class OrderBook {
         buffer.putInt(buyStops);
         buffer.putInt(sellStops);
 
-        writeLiveSide(buffer, bids);
-        writeLiveSide(buffer, asks);
+        writeLiveSide(buffer, bids, bidCount);
+        writeLiveSide(buffer, asks, askCount);
         writeStops(buffer, stopBuys);
         writeStops(buffer, stopSells);
     }
@@ -348,6 +462,9 @@ public final class OrderBook {
 
         for (int i = 0; i < liveCount; i++) {
             BookOrder order = borrowOrder();
+            if (order == null) {
+                throw new IllegalArgumentException("Snapshot exceeds preallocated order capacity");
+            }
             order.orderId = buffer.getLong();
             order.traderId = buffer.getLong();
             order.side = readSide(buffer.get());
@@ -360,26 +477,28 @@ public final class OrderBook {
             if (order.openQty <= 0 || order.visibleQty <= 0 || order.visibleQty > order.openQty) {
                 throw new IllegalArgumentException("Invalid live order state in snapshot");
             }
-
-            addToBook(order);
+            if (!addToBook(order)) {
+                throw new IllegalArgumentException("Snapshot exceeds preallocated book level capacity");
+            }
             liveOrders.put(order.orderId, order);
         }
 
         for (int i = 0; i < buyStops; i++) {
-            stopBuys.addLast(readStop(buffer));
+            StopOrder stop = readStop(buffer);
+            if (!stopBuys.offer(stop)) {
+                throw new IllegalArgumentException("Snapshot exceeds preallocated stop-buy capacity");
+            }
         }
         for (int i = 0; i < sellStops; i++) {
-            stopSells.addLast(readStop(buffer));
+            StopOrder stop = readStop(buffer);
+            if (!stopSells.offer(stop)) {
+                throw new IllegalArgumentException("Snapshot exceeds preallocated stop-sell capacity");
+            }
         }
     }
-
-    private int liveOrderCount() {
-        return liveOrders.size();
-    }
-
-    private void writeLiveSide(ByteBuffer buffer, NavigableMap<Long, PriceLevel> sideBook) {
-        for (PriceLevel level : sideBook.values()) {
-            BookOrder order = level.head;
+    private void writeLiveSide(ByteBuffer buffer, PriceLevel[] sideBook, int count) {
+        for (int i = 0; i < count; i++) {
+            BookOrder order = sideBook[i].head;
             while (order != null) {
                 buffer.putLong(order.orderId);
                 buffer.putLong(order.traderId);
@@ -394,8 +513,9 @@ public final class OrderBook {
         }
     }
 
-    private void writeStops(ByteBuffer buffer, Deque<StopOrder> stops) {
-        for (StopOrder stop : stops) {
+    private void writeStops(ByteBuffer buffer, StopQueue stops) {
+        for (int i = 0; i < stops.size(); i++) {
+            StopOrder stop = stops.get(i);
             buffer.putLong(stop.orderId);
             buffer.putLong(stop.traderId);
             buffer.put(stop.side == Side.SELL ? (byte) 1 : (byte) 0);
@@ -406,6 +526,9 @@ public final class OrderBook {
 
     private StopOrder readStop(ByteBuffer buffer) {
         StopOrder stop = borrowStop();
+        if (stop == null) {
+            throw new IllegalArgumentException("Snapshot exceeds preallocated stop capacity");
+        }
         stop.orderId = buffer.getLong();
         stop.traderId = buffer.getLong();
         stop.side = readSide(buffer.get());
@@ -422,10 +545,10 @@ public final class OrderBook {
     }
 
     private void clearState() {
-        recycleBookSide(bids);
-        recycleBookSide(asks);
-        bids.clear();
-        asks.clear();
+        recycleBookSide(bids, bidCount, Side.BUY);
+        recycleBookSide(asks, askCount, Side.SELL);
+        bidCount = 0;
+        askCount = 0;
         liveOrders.clear();
         recycleStops(stopBuys);
         recycleStops(stopSells);
@@ -433,18 +556,21 @@ public final class OrderBook {
         lastTradePrice = 0;
     }
 
-    private void recycleBookSide(NavigableMap<Long, PriceLevel> sideBook) {
-        for (PriceLevel level : sideBook.values()) {
+    private void recycleBookSide(PriceLevel[] sideBook, int count, Side side) {
+        for (int i = 0; i < count; i++) {
+            PriceLevel level = sideBook[i];
             BookOrder order = level.head;
             while (order != null) {
                 BookOrder next = order.next;
                 recycleOrder(order);
                 order = next;
             }
+            recycleLevel(side, level);
+            sideBook[i] = null;
         }
     }
 
-    private void recycleStops(Deque<StopOrder> stops) {
+    private void recycleStops(StopQueue stops) {
         StopOrder stop;
         while ((stop = stops.pollFirst()) != null) {
             recycleStop(stop);
@@ -452,8 +578,10 @@ public final class OrderBook {
     }
 
     private BookOrder borrowOrder() {
-        BookOrder order = orderPool.pollFirst();
-        return order != null ? order : new BookOrder();
+        if (freeOrders == 0) {
+            return null;
+        }
+        return orderPool[--freeOrders];
     }
 
     private void recycleOrder(BookOrder order) {
@@ -468,12 +596,14 @@ public final class OrderBook {
         order.prev = null;
         order.next = null;
         order.level = null;
-        orderPool.addFirst(order);
+        orderPool[freeOrders++] = order;
     }
 
     private StopOrder borrowStop() {
-        StopOrder stop = stopPool.pollFirst();
-        return stop != null ? stop : new StopOrder();
+        if (freeStops == 0) {
+            return null;
+        }
+        return stopPool[--freeStops];
     }
 
     private void recycleStop(StopOrder stop) {
@@ -482,7 +612,69 @@ public final class OrderBook {
         stop.side = null;
         stop.stopPriceTicks = 0;
         stop.quantity = 0;
-        stopPool.addFirst(stop);
+        stopPool[freeStops++] = stop;
+    }
+
+    private PriceLevel borrowLevel(Side side) {
+        if (side == Side.BUY) {
+            if (freeBidLevels == 0) {
+                return null;
+            }
+            return bidLevelPool[--freeBidLevels];
+        }
+        if (freeAskLevels == 0) {
+            return null;
+        }
+        return askLevelPool[--freeAskLevels];
+    }
+
+    private void recycleLevel(Side side, PriceLevel level) {
+        if (level == null) {
+            return;
+        }
+        level.init(0);
+        if (side == Side.BUY) {
+            bidLevelPool[freeBidLevels++] = level;
+        } else {
+            askLevelPool[freeAskLevels++] = level;
+        }
+    }
+
+    private static int findInsertPos(PriceLevel[] levels, int count, long priceTicks, boolean isBuy) {
+        int lo = 0;
+        int hi = count;
+        while (lo < hi) {
+            int mid = lo + ((hi - lo) >>> 1);
+            long midPrice = levels[mid].priceTicks;
+            if (midPrice == priceTicks) {
+                return mid;
+            }
+            if (isBuy) {
+                if (midPrice < priceTicks) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            } else if (midPrice > priceTicks) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    private static void shiftRight(PriceLevel[] levels, int count, int from) {
+        for (int i = count; i > from; i--) {
+            levels[i] = levels[i - 1];
+        }
+    }
+
+    private static void shiftLeft(PriceLevel[] levels, int count, int from) {
+        for (int i = from; i < count - 1; i++) {
+            levels[i] = levels[i + 1];
+        }
+        levels[count - 1] = null;
     }
 
     private static final class StopOrder {
@@ -491,5 +683,58 @@ public final class OrderBook {
         Side side;
         long stopPriceTicks;
         long quantity;
+    }
+
+    private static final class StopQueue {
+        private final StopOrder[] entries;
+        private int head;
+        private int tail;
+        private int size;
+
+        private StopQueue(int capacity) {
+            this.entries = new StopOrder[capacity];
+        }
+
+        boolean offer(StopOrder stop) {
+            if (size == entries.length) {
+                return false;
+            }
+            entries[tail] = stop;
+            tail++;
+            if (tail == entries.length) {
+                tail = 0;
+            }
+            size++;
+            return true;
+        }
+
+        StopOrder pollFirst() {
+            if (size == 0) {
+                return null;
+            }
+            StopOrder stop = entries[head];
+            entries[head] = null;
+            head++;
+            if (head == entries.length) {
+                head = 0;
+            }
+            size--;
+            return stop;
+        }
+
+        StopOrder get(int index) {
+            if (index < 0 || index >= size) {
+                throw new IndexOutOfBoundsException(index);
+            }
+            int pos = head + index;
+            if (pos >= entries.length) {
+                pos -= entries.length;
+            }
+            return entries[pos];
+        }
+
+        int size() {
+            return size;
+        }
     }
 }

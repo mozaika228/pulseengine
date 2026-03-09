@@ -39,6 +39,8 @@ and this project follows Semantic Versioning.
 - Added deterministic unit tests for risk controls (RiskValidationTest).
 - Added native insert status contract (explicit overflow/invalid reject codes) and capacity-aware JNI constructor (`NativeOrderBook(int maxLevels, int maxOrders)`).
 - Bumped JNI/native API compatibility version to `2` and added native overflow status test coverage.
+- Replaced Java `TreeMap`/`ArrayDeque` core book structures with fixed-capacity ladders, preallocated level pools, and fixed stop queues.
+- Added Java core capacity reject coverage (`RejectCode.CAPACITY_EXCEEDED`) for deterministic overflow behavior.
 
 ## [0.2.0] - 2026-02-20
 ### Added

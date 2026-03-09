@@ -18,7 +18,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - partial fills
 - SMP policy: cancel aggressor
 - optional iceberg (`peakSize` in `OrderRequest`)
-- order/stop object pooling in matching core (lower GC pressure)
+- fixed-capacity price ladders + preallocated order/stop pools in Java matching core (no TreeMap/ArrayDeque in the hot path)
 - staged pipeline: `risk -> match -> market-data` on LMAX Disruptor
 - market data can run async on a dedicated ring/thread (`match -> md`) with L2 batching per batch boundary
 - non-blocking submit APIs are available (`trySubmit*`) to support wait-free/backpressure-aware ingress

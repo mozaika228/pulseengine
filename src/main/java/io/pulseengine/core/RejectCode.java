@@ -9,6 +9,7 @@ public final class RejectCode {
     public static final byte RATE_LIMIT = 5;
     public static final byte FAT_FINGER = 6;
     public static final byte POSITION_LIMIT = 7;
+    public static final byte CAPACITY_EXCEEDED = 8;
 
     private RejectCode() {
     }

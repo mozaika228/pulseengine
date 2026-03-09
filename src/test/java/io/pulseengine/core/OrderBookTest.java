@@ -78,6 +78,20 @@ class OrderBookTest {
         assertTrue(sink.filled.contains("filled:40") || sink.cancels.stream().anyMatch(v -> v.startsWith("cancel:40:")));
     }
 
+    @Test
+    void rejectsWhenPreallocatedCapacityIsExhausted() {
+        OrderBook book = new OrderBook(1, 1, 1);
+        RecordingSink sink = new RecordingSink();
+
+        book.process(OrderRequest.limit(50, 1000, Side.BUY, 49_900, 10, TimeInForce.GTC), sink, SmpPolicy.NONE, 1);
+        book.process(OrderRequest.limit(51, 1001, Side.BUY, 49_800, 10, TimeInForce.GTC), sink, SmpPolicy.NONE, 2);
+        book.process(OrderRequest.stopMarket(52, 1002, Side.SELL, 49_700, 10), sink, SmpPolicy.NONE, 3);
+        book.process(OrderRequest.stopMarket(53, 1003, Side.SELL, 49_600, 10), sink, SmpPolicy.NONE, 4);
+
+        assertTrue(sink.rejections.contains("reject:51:" + RejectCode.CAPACITY_EXCEEDED));
+        assertTrue(sink.rejections.contains("reject:53:" + RejectCode.CAPACITY_EXCEEDED));
+    }
+
     private static final class RecordingSink implements MatchEventSink {
         private final List<String> trades = new ArrayList<>();
         private final List<String> rejections = new ArrayList<>();

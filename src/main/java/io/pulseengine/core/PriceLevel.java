@@ -1,12 +1,16 @@
 package io.pulseengine.core;
 
 final class PriceLevel {
-    final long priceTicks;
+    long priceTicks;
     BookOrder head;
     BookOrder tail;
+    long totalVisibleQty;
 
-    PriceLevel(long priceTicks) {
+    void init(long priceTicks) {
         this.priceTicks = priceTicks;
+        this.head = null;
+        this.tail = null;
+        this.totalVisibleQty = 0;
     }
 
     boolean isEmpty() {
@@ -20,10 +24,12 @@ final class PriceLevel {
         if (tail == null) {
             head = order;
             tail = order;
+            totalVisibleQty += order.visibleQty;
             return;
         }
         tail.next = order;
         tail = order;
+        totalVisibleQty += order.visibleQty;
     }
 
     void remove(BookOrder order) {
@@ -42,6 +48,7 @@ final class PriceLevel {
         order.prev = null;
         order.next = null;
         order.level = null;
+        totalVisibleQty -= order.visibleQty;
     }
 
     void moveToTail(BookOrder order) {
@@ -53,12 +60,6 @@ final class PriceLevel {
     }
 
     long totalVisibleQty() {
-        long total = 0;
-        BookOrder p = head;
-        while (p != null) {
-            total += p.visibleQty;
-            p = p.next;
-        }
-        return total;
+        return totalVisibleQty;
     }
 }
