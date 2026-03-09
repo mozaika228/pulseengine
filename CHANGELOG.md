@@ -42,6 +42,7 @@ and this project follows Semantic Versioning.
 - Replaced Java `TreeMap`/`ArrayDeque` core book structures with fixed-capacity ladders, preallocated level pools, and fixed stop queues.
 - Added Java core capacity reject coverage (`RejectCode.CAPACITY_EXCEEDED`) for deterministic overflow behavior.
 - Added Java allocation harness and blocking CI thresholds for core/pipeline allocation-rate regressions.
+- Added blocking soak qualification workflow (`native parity soak + recovery qualification`) with markdown reporting.
 
 ## [0.2.0] - 2026-02-20
 ### Added

@@ -1,4 +1,4 @@
-﻿# Runbook
+# Runbook
 
 ## Start observability stack
 1. Build Java classes and native library.
