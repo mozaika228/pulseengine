@@ -2,7 +2,7 @@ name: Nightly Performance
 
 on:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '"'"'0 3 * * *'"'"'
   workflow_dispatch:
 
 jobs:
@@ -37,40 +37,19 @@ jobs:
           -Dexec.mainClass=org.openjdk.jmh.Main
           "-Dexec.args=PipelineBenchmark.iocCrossingOrder -p enableMd=false -wi 1 -i 3 -r 1s -f 0 -rf json -rff target/jmh-pipeline-no-md.json"
 
-      - name: Validate latency thresholds
-        run: |
-          python - <<'PY'
-          import json, sys
+      - name: Run latency harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.LatencyHarness
+          > target/latency-harness.txt
 
-          def load_score(path):
-              with open(path, 'r', encoding='utf-8') as f:
-                  data = json.load(f)
-              if not data:
-                  raise RuntimeError(f'No JMH data in {path}')
-              return float(data[0]['primaryMetric']['score'])
-
-          core = load_score('target/jmh-core.json')
-          pipeline = load_score('target/jmh-pipeline-no-md.json')
-
-          # Conservative thresholds for CI-hosted runners.
-          core_limit = 2500.0
-          pipeline_limit = 60000.0
-
-          print(f'core_mean_ns={core}')
-          print(f'pipeline_no_md_mean_ns={pipeline}')
-
-          failed = False
-          if core > core_limit:
-              print(f'FAIL: core mean {core:.2f} ns > {core_limit:.2f} ns')
-              failed = True
-          if pipeline > pipeline_limit:
-              print(f'FAIL: pipeline mean {pipeline:.2f} ns > {pipeline_limit:.2f} ns')
-              failed = True
-
-          if failed:
-              sys.exit(1)
-          print('Performance thresholds passed.')
-          PY
+      - name: Run allocation harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.AllocationHarness
+          > target/allocation-harness.txt
 
       - name: Upload JMH results
         uses: actions/upload-artifact@v4
@@ -79,3 +58,5 @@ jobs:
           path: |
             target/jmh-core.json
             target/jmh-pipeline-no-md.json
+            target/latency-harness.txt
+            target/allocation-harness.txt

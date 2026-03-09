@@ -13,6 +13,8 @@ THRESHOLDS = {
     "latency_p99_ns_max": 20000.0,
     "latency_p9999_ns_max": 100000.0,
     "pipeline_throughput_ops_min": 100000.0,
+    "core_alloc_bytes_per_op_max": 8.0,
+    "pipeline_core_alloc_bytes_per_op_max": 8.0,
     # CI-hosted runners are noisy; this benchmark measures full insert batch case.
     "cpp_insert_ns_max": 1500000.0,
 }
@@ -40,14 +42,12 @@ def load_cpp_insert_score(path: Path) -> float:
     if not benchmarks:
         raise RuntimeError(f"no benchmark entries in {path}")
 
-    # Pick the heaviest insert case to gate tail behavior.
     target_name = "BM_InsertLimitOrder/100000"
-    for b in benchmarks:
-        if b.get("name") == target_name:
-            return float(b["real_time"])
+    for benchmark in benchmarks:
+        if benchmark.get("name") == target_name:
+            return float(benchmark["real_time"])
 
-    # fallback: max real_time among BM_InsertLimitOrder variants
-    values = [float(b["real_time"]) for b in benchmarks if str(b.get("name", "")).startswith("BM_InsertLimitOrder/")]
+    values = [float(benchmark["real_time"]) for benchmark in benchmarks if str(benchmark.get("name", "")).startswith("BM_InsertLimitOrder/")]
     if not values:
         raise RuntimeError(f"BM_InsertLimitOrder entries not found in {path}")
     return max(values)
@@ -59,6 +59,7 @@ def main() -> int:
     parser.add_argument("--jmh-pipeline", required=True, type=Path)
     parser.add_argument("--latency-harness", required=True, type=Path)
     parser.add_argument("--pipeline-demo", required=True, type=Path)
+    parser.add_argument("--allocation-harness", required=True, type=Path)
     parser.add_argument("--cpp-bench", required=True, type=Path)
     parser.add_argument("--out-report", required=True, type=Path)
     args = parser.parse_args()
@@ -67,12 +68,15 @@ def main() -> int:
     jmh_pipeline = load_jmh_score(args.jmh_pipeline)
     latency = parse_key_value_text(args.latency_harness)
     pipeline = parse_key_value_text(args.pipeline_demo)
+    allocation = parse_key_value_text(args.allocation_harness)
     cpp_insert = load_cpp_insert_score(args.cpp_bench)
 
     p50 = latency.get("latency_ns_p50")
     p99 = latency.get("latency_ns_p99")
     p9999 = latency.get("latency_ns_p9999")
     throughput = pipeline.get("throughput_ops")
+    core_alloc = allocation.get("core_alloc_bytes_per_op")
+    pipeline_alloc = allocation.get("pipeline_core_alloc_bytes_per_op")
 
     missing = []
     for key, value in [
@@ -80,6 +84,8 @@ def main() -> int:
         ("latency_ns_p99", p99),
         ("latency_ns_p9999", p9999),
         ("throughput_ops", throughput),
+        ("core_alloc_bytes_per_op", core_alloc),
+        ("pipeline_core_alloc_bytes_per_op", pipeline_alloc),
     ]:
         if value is None:
             missing.append(key)
@@ -93,6 +99,8 @@ def main() -> int:
         ("latency_p99_ns", p99, "<=", THRESHOLDS["latency_p99_ns_max"]),
         ("latency_p9999_ns", p9999, "<=", THRESHOLDS["latency_p9999_ns_max"]),
         ("pipeline_throughput_ops", throughput, ">=", THRESHOLDS["pipeline_throughput_ops_min"]),
+        ("core_alloc_bytes_per_op", core_alloc, "<=", THRESHOLDS["core_alloc_bytes_per_op_max"]),
+        ("pipeline_core_alloc_bytes_per_op", pipeline_alloc, "<=", THRESHOLDS["pipeline_core_alloc_bytes_per_op_max"]),
         ("cpp_insert_ns", cpp_insert, "<=", THRESHOLDS["cpp_insert_ns_max"]),
     ]
 
