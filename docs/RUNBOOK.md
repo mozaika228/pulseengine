@@ -9,6 +9,10 @@
 ## Native soak run
 - `NativeParitySoakTool <seconds> <seed> <metricsPort>`
 - Metrics endpoint: `/metrics`
+- GitHub Actions: `.github/workflows/soak-qualification.yml`
+
+## Transport qualification
+- GitHub Actions: `.github/workflows/transport-qualification.yml`
 
 ## Recovery procedure
 1. `CoordinatedRecoveryTool capture <journal> <snapshot> <checkpoint>`
@@ -20,3 +24,4 @@
 - `pulseengine_parity_drift_total > 0` means native/java divergence detected
 - rising backpressure rejects means transport saturation
 - replay lag growth indicates recovery bottleneck
+- failing soak or transport qualification report means release candidate should not be promoted

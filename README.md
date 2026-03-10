@@ -104,7 +104,9 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## CI automation
 - Build/test/coverage: `.github/workflows/ci.yml`
-- Nightly performance regression checks: `.github/workflows/nightly-performance.yml` (JMH + latency + allocation evidence)`r`n- Soak qualification workflow: `.github/workflows/soak-qualification.yml` (native parity soak + recovery qualification gates)
+- Nightly performance regression checks: `.github/workflows/nightly-performance.yml` (JMH + latency + allocation evidence)
+- Soak qualification workflow: `.github/workflows/soak-qualification.yml` (native parity soak + recovery qualification gates)
+- Transport qualification workflow: `.github/workflows/transport-qualification.yml` (Aeron UDP multicast demo + transport gate report)
 - C++ native build + Google Benchmark run: `.github/workflows/ci.yml` (`cpp-benchmark` job)
 - Native backend smoke uses `NativePipelineDemo` with default backend (`NATIVE`) in CI.
 - Release-blocking perf gates in CI (`JMH + HdrHistogram latency + throughput + allocation-rate + Google Benchmark`) with report artifact per PR.
@@ -115,6 +117,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Security policy: `SECURITY.md`
 - License: `LICENSE`
 
-## Not yet HFT-final
-- still not fully wait-free/garbage-free in all paths (core data structures still use tree/list layouts; transport now uses bounded backpressure attempts instead of unbounded spin)
-- JNI prototype now uses contiguous fixed-capacity level ladders + intrusive queues + preallocated node freelist; Java core path still remains the main non-wait-free part
+## Qualification Status
+- Java and native matching paths run on fixed-capacity hot-path structures with explicit overflow rejects.
+- Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, and transport qualification.
+- Remaining work is operational tuning and production transport evidence, not core data-structure cleanup.

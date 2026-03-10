@@ -115,6 +115,8 @@ public final class NativeParitySoakTool {
         double sec = elapsedNs / 1_000_000_000.0;
         long throughput = sec > 0 ? (long) (ops / sec) : 0;
         System.out.println("soak_ok=true");
+        System.out.println("seed=" + seed);
+        System.out.println("parity_drift_total=0");
         System.out.println("duration_sec=" + (long) sec);
         System.out.println("ops=" + ops);
         System.out.println("throughput_ops=" + throughput);
