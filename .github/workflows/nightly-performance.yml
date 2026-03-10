@@ -20,6 +20,17 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Install C++ benchmark toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libbenchmark-dev
+
+      - name: Configure CMake
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON
+
+      - name: Build native targets
+        run: cmake --build cpp/build --config Release
+
       - name: Compile tests
         run: mvn -B -DskipTests test-compile
 
@@ -51,7 +62,32 @@ jobs:
           -Dexec.mainClass=io.pulseengine.app.AllocationHarness
           > target/allocation-harness.txt
 
+      - name: Run throughput demo
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.PipelineDemo
+          > target/pipeline-demo.txt
+
+      - name: Run Google Benchmark (insert limit)
+        run: |
+          ./cpp/build/order_book_insert_bench \
+            --benchmark_format=json \
+            --benchmark_out=cpp/build/order_book_insert_bench.json
+
+      - name: Validate performance gates
+        run: >-
+          python3 scripts/perf/validate_perf.py
+          --jmh-core target/jmh-core.json
+          --jmh-pipeline target/jmh-pipeline-no-md.json
+          --latency-harness target/latency-harness.txt
+          --pipeline-demo target/pipeline-demo.txt
+          --allocation-harness target/allocation-harness.txt
+          --cpp-bench cpp/build/order_book_insert_bench.json
+          --out-report target/perf-regression-report.md
+
       - name: Upload JMH results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nightly-jmh-results
@@ -60,3 +96,18 @@ jobs:
             target/jmh-pipeline-no-md.json
             target/latency-harness.txt
             target/allocation-harness.txt
+            target/pipeline-demo.txt
+
+      - name: Upload C++ benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-cpp-benchmark
+          path: cpp/build/order_book_insert_bench.json
+
+      - name: Upload perf regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-perf-regression-report
+          path: target/perf-regression-report.md

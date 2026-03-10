@@ -45,6 +45,7 @@ and this project follows Semantic Versioning.
 - Added blocking soak qualification workflow (`native parity soak + recovery qualification`) with markdown reporting.
 - Added transport qualification workflow for Aeron UDP multicast demo with blocking gate report.
 - Marked native C++ core as production-ready in documentation after passing qualification gates.
+- Nightly performance workflow now runs C++ benchmark + throughput demo and publishes perf regression report artifact.
 
 ## [0.2.0] - 2026-02-20
 ### Added

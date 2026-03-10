@@ -91,7 +91,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 | Path | Tool | Scenario | Result |
 |---|---|---|---|
 | Java order book | JMH | `NativeVsJavaBenchmark.javaOrderBookMarketMatch` | `0.008 ops/ns` (~`125 ns/op`) |
-| C++ order book | Google Benchmark | `BM_InsertLimitOrder` | pending CI artifact (`cpp-benchmark-results`) |
+| C++ order book | Google Benchmark | `BM_InsertLimitOrder` | see nightly perf report artifact (`nightly-perf-regression-report`) |
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
