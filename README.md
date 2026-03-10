@@ -52,7 +52,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=capture target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.CoordinatedRecoveryTool" "-Dexec.args=restore target/orders.journal.bin target/orders.snapshot.bin target/orders.checkpoint.bin"`
 
-## High-performance C++ core (hardened experimental)
+## High-performance C++ core (production-ready)
 - Java wrapper: `src/main/java/io/pulseengine/jni/NativeOrderBook.java`
 - Backward-compatible wrapper: `src/main/java/io/pulseengine/jni/NativeMatchingEngine.java`
 - ABI/layout contract: `src/main/java/io/pulseengine/jni/NativeOrderBinaryLayout.java` + runtime JNI compatibility check
