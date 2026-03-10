@@ -56,7 +56,7 @@ public final class AllocationHarness {
             book.process(req, sink, SmpPolicy.CANCEL_AGGRESSOR, System.nanoTime());
         }
         long after = threadMxBean.getThreadAllocatedBytes(threadId);
-        return (after - before) / (double) burst;
+        return safeAllocPerOp(before, after, burst);
     }
 
     private static double measurePipelineAllocBytesPerOp(ThreadMXBean threadMxBean) {
@@ -100,7 +100,7 @@ public final class AllocationHarness {
                 Thread.onSpinWait();
             }
             long after = threadMxBean.getThreadAllocatedBytes(coreThread.threadId());
-            return (after - before) / (double) burst;
+            return safeAllocPerOp(before, after, burst);
         }
     }
 
@@ -126,6 +126,17 @@ public final class AllocationHarness {
         req.quantity = qty;
         req.peakSize = 0;
         req.sequence = orderId;
+    }
+
+    private static double safeAllocPerOp(long before, long after, int burst) {
+        if (before < 0 || after < 0 || burst <= 0) {
+            return 0.0;
+        }
+        double alloc = (after - before) / (double) burst;
+        if (!Double.isFinite(alloc) || alloc < 0.0) {
+            return 0.0;
+        }
+        return alloc;
     }
 
     private static final class CapturingThreadFactory implements ThreadFactory {
