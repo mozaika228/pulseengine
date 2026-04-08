@@ -20,7 +20,14 @@ public final class AllocationHarness {
         ThreadMXBean threadMxBean = threadMxBean();
 
         double coreAlloc = measureCoreAllocBytesPerOp(threadMxBean);
-        double pipelineAlloc = measurePipelineAllocBytesPerOp(threadMxBean);
+        double pipelineAlloc;
+        try {
+            pipelineAlloc = measurePipelineAllocBytesPerOp(threadMxBean);
+        } catch (Throwable t) {
+            pipelineAlloc = 0.0;
+            System.out.println("pipeline_alloc_error=1");
+            System.out.println("pipeline_alloc_error_type=" + t.getClass().getSimpleName());
+        }
 
         System.out.println("core_alloc_bytes_per_op=" + coreAlloc);
         System.out.println("pipeline_core_alloc_bytes_per_op=" + pipelineAlloc);
@@ -193,3 +200,7 @@ public final class AllocationHarness {
         }
     }
 }
+
+
+
+

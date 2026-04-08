@@ -8,7 +8,7 @@ The `main` branch is actively supported.
 
 Please do not open public issues for security vulnerabilities.
 
-Report vulnerabilities by emailing: `security@pulseengine.dev`.
+Use GitHub Security Advisories for private disclosure in this repository.
 
 Include:
 - A clear description of the issue

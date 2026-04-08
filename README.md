@@ -104,13 +104,15 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## CI automation
 - Build/test/coverage: `.github/workflows/ci.yml`
-- Nightly performance regression checks: `.github/workflows/nightly-performance.yml` (JMH + latency + allocation evidence)
+- Nightly performance regression checks: `.github/workflows/nightly-performance.yml` (JMH + latency + allocation + C++ benchmark + perf report)
 - Soak qualification workflow: `.github/workflows/soak-qualification.yml` (native parity soak + recovery qualification gates)
-- Transport qualification workflow: `.github/workflows/transport-qualification.yml` (Aeron UDP multicast demo + transport gate report)
-- C++ native build + Google Benchmark run: `.github/workflows/ci.yml` (`cpp-benchmark` job)
+- Transport qualification workflow: `.github/workflows/transport-qualification.yml` (Aeron UDP multicast demo + strict transport gate report)
+- Staging canary workflow: `.github/workflows/staging-canary.yml` (short soak + transport sanity + canary report)
+- Finalization smoke workflows: `.github/workflows/finalization-smoke.yml`, `.github/workflows/finalization-smoke-v2.yml`
+- Release qualification workflow: `.github/workflows/release-qualification.yml` (release-blocking SLO gates + `release-qualification-pack`)
+- Gated release publishing: `.github/workflows/release-gated-publish.yml` (publishes only after qualification pass)
 - Native backend smoke uses `NativePipelineDemo` with default backend (`NATIVE`) in CI.
-- Release-blocking perf gates in CI (`JMH + HdrHistogram latency + throughput + allocation-rate + Google Benchmark`) with report artifact per PR.
-
+- Release/perf gates are blocking and produce markdown artifacts for audit.
 ## Governance
 - Changelog: `CHANGELOG.md`
 - Contributing guide: `CONTRIBUTING.md`
@@ -119,5 +121,5 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 
 ## Qualification Status
 - Java and native matching paths run on fixed-capacity hot-path structures with explicit overflow rejects.
-- Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, and transport qualification.
-- Remaining work is operational tuning and production transport evidence, not core data-structure cleanup.
+- Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, transport qualification, and staging canary checks.
+- Release publication is gated by qualification status and private advisory security policy is enforced.

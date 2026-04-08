@@ -7,6 +7,12 @@ and this project follows Semantic Versioning.
 
 ## [Unreleased]
 ### Added
+- Added finalization smoke workflows and canary diagnostics artifacts for closeout proof collection.
+- Added release-gated publication and release qualification evidence docs/workflows.
+- Added robust CI guards for Aeron module exports (`--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED`).
+- Updated canary validator behavior to avoid false negatives on transport fallback while keeping strict transport qualification gates.
+- Updated root `SECURITY.md` to align with private advisory disclosure policy.
+- Hardened allocation/performance validators to emit report-friendly FAIL output when metrics are missing.
 - Native JNI path extended with iceberg limit orders and partial-fill visible quantity refresh.
 - Added Prometheus metrics server for soak/runtime observability (`PrometheusMetricsServer`).
 - Added ops stack and docs (`docker-compose.yml`, Prometheus, Grafana dashboard, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).
@@ -61,6 +67,10 @@ and this project follows Semantic Versioning.
 ### Changed
 - Project promoted from baseline naming to PulseEngine release line.
 - Version bumped to `0.2.0-SNAPSHOT`.
+
+
+
+
 
 
 
