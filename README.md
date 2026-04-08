@@ -8,8 +8,21 @@
 In-process single-symbol matching core for Java 21 with a staged Disruptor pipeline.
 
 ## Maturity
-- Current release line: `0.2.0-SNAPSHOT`
+- Current release line: `1.0.0`
 - CI, unit tests, coverage, and JMH automation are enabled.
+
+## Production Status Statement
+PulseEngine `1.0.0` is production-ready for single-symbol in-process deployment with gated CI qualification.
+
+Included in release scope:
+- deterministic matching core (Java + JNI/C++) with explicit capacity rejects
+- journaling + CRC verification/repair + replay
+- full snapshot/restore + coordinated catch-up replay (`snapshot + checkpoint + journal`)
+- Aeron IPC and Aeron UDP/multicast transport qualification gates
+- release qualification artifacts and blocking performance/soak/recovery checks
+
+Current boundary:
+- single-symbol engine profile; horizontal scale is achieved by symbol sharding across engine instances.
 
 ## Implemented now
 - price-time priority matching (single symbol)
@@ -84,14 +97,14 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Soak parity tool (default 6h):
   - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.NativeParitySoakTool" "-Dexec.args=21600 20260221"`
 
-## Early numbers
+## Final Benchmark Table (Java vs C++)
 - Code footprint (core Java + C++ sources): Java `3760` LOC, C++ `220` LOC, C++ share `5.53%`.
 - Latency/throughput snapshot:
 
 | Path | Tool | Scenario | Result |
 |---|---|---|---|
-| Java order book | JMH | `NativeVsJavaBenchmark.javaOrderBookMarketMatch` | `0.008 ops/ns` (~`125 ns/op`) |
-| C++ order book | Google Benchmark | `BM_InsertLimitOrder` | see nightly perf report artifact (`nightly-perf-regression-report`) |
+| Java order book | JMH | `NativeVsJavaBenchmark.javaOrderBookMarketMatch` | `0.007 ops/ns` (~`143 ns/op`) |
+| C++ order book | Google Benchmark | `BM_InsertLimitOrder/100000` | `656650.28 ns/op` (latest CI sample) |
 
 ## Tests and coverage
 - Unit tests: `src/test/java/io/pulseengine/core/OrderBookTest.java`
@@ -113,6 +126,7 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Gated release publishing: `.github/workflows/release-gated-publish.yml` (publishes only after qualification pass)
 - Native backend smoke uses `NativePipelineDemo` with default backend (`NATIVE`) in CI.
 - Release/perf gates are blocking and produce markdown artifacts for audit.
+
 ## Governance
 - Changelog: `CHANGELOG.md`
 - Contributing guide: `CONTRIBUTING.md`
@@ -123,3 +137,6 @@ In-process single-symbol matching core for Java 21 with a staged Disruptor pipel
 - Java and native matching paths run on fixed-capacity hot-path structures with explicit overflow rejects.
 - Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, transport qualification, and staging canary checks.
 - Release publication is gated by qualification status and private advisory security policy is enforced.
+
+
+

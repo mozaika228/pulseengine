@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.pulseengine</groupId>
     <artifactId>pulseengine</artifactId>
-    <version>0.2.0-SNAPSHOT</version>
+    <version>1.0.0</version>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
@@ -159,3 +159,4 @@
         </plugins>
     </build>
 </project>
+

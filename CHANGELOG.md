@@ -6,6 +6,8 @@ The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-04-08
 ### Added
 - Added finalization smoke workflows and canary diagnostics artifacts for closeout proof collection.
 - Added release-gated publication and release qualification evidence docs/workflows.
@@ -67,6 +69,9 @@ and this project follows Semantic Versioning.
 ### Changed
 - Project promoted from baseline naming to PulseEngine release line.
 - Version bumped to `0.2.0-SNAPSHOT`.
+
+
+
 
 
 
