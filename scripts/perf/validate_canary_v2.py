@@ -16,16 +16,19 @@ def parse_kv(path: Path) -> dict[str, str]:
     return values
 
 
-def as_float(values: dict[str, str], key: str) -> float:
+def as_float(values: dict[str, str], key: str) -> tuple[bool, float]:
     if key not in values:
-        raise RuntimeError(f"missing metric: {key}")
-    return float(values[key])
+        return False, 0.0
+    try:
+        return True, float(values[key])
+    except ValueError:
+        return False, 0.0
 
 
-def as_bool(values: dict[str, str], key: str) -> bool:
+def as_bool(values: dict[str, str], key: str) -> tuple[bool, bool]:
     if key not in values:
-        raise RuntimeError(f"missing metric: {key}")
-    return values[key].strip().lower() in ("true", "1", "yes")
+        return False, False
+    return True, values[key].strip().lower() in ("true", "1", "yes")
 
 
 def main() -> int:
@@ -39,12 +42,18 @@ def main() -> int:
     soak = parse_kv(args.soak)
     transport = parse_kv(args.transport)
 
+    has_soak_ok, soak_ok = as_bool(soak, "soak_ok")
+    has_drift, drift = as_float(soak, "parity_drift_total")
+    has_tput, tput = as_float(soak, "throughput_ops")
+    has_orders, orders = as_float(transport, "aeron_orders_processed")
+    has_frags, frags = as_float(transport, "aeron_md_fragments")
+
     checks = [
-        ("soak_ok", as_bool(soak, "soak_ok")),
-        ("parity_drift_total", as_float(soak, "parity_drift_total") == 0.0),
-        ("throughput_ops", as_float(soak, "throughput_ops") >= args.min_throughput),
-        ("aeron_orders_processed", as_float(transport, "aeron_orders_processed") == 4.0),
-        ("aeron_md_fragments", as_float(transport, "aeron_md_fragments") > 0.0),
+        ("soak_ok", has_soak_ok and soak_ok),
+        ("parity_drift_total", has_drift and drift == 0.0),
+        ("throughput_ops", has_tput and tput >= args.min_throughput),
+        ("aeron_orders_processed", has_orders and orders == 4.0),
+        ("aeron_md_fragments", has_frags and frags > 0.0),
     ]
 
     lines = ["# Staging Canary Report", "", "| Gate | Status |", "|---|---|"]
@@ -54,6 +63,24 @@ def main() -> int:
         lines.append(f"| `{name}` | **{status}** |")
         if not ok:
             failed = True
+
+    missing = []
+    if not has_soak_ok:
+        missing.append("soak_ok")
+    if not has_drift:
+        missing.append("parity_drift_total")
+    if not has_tput:
+        missing.append("throughput_ops")
+    if not has_orders:
+        missing.append("aeron_orders_processed")
+    if not has_frags:
+        missing.append("aeron_md_fragments")
+
+    if missing:
+        lines.append("")
+        lines.append("Missing metrics:")
+        for m in missing:
+            lines.append(f"- `{m}`")
 
     lines.append("")
     lines.append(f"canary_status={'FAIL' if failed else 'PASS'}")

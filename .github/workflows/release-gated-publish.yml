@@ -120,6 +120,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+          MAVEN_OPTS: '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
         run: |
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
             -Dexec.classpathScope=compile \
@@ -138,6 +139,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+          MAVEN_OPTS: '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
         run: >-
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
           -Dexec.classpathScope=compile
@@ -154,6 +156,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+          MAVEN_OPTS: '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
         run: |
           set -euo pipefail
           start_ts=$(date +%s)
@@ -211,3 +214,4 @@ jobs:
             Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
             Artifact: release-qualification-pack
             Report file: release-qualification-report.md
+

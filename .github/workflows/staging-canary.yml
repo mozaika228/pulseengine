@@ -55,6 +55,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+          MAVEN_OPTS: '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
         run: >-
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
           -Dexec.classpathScope=compile
@@ -66,6 +67,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+          MAVEN_OPTS: '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
         run: >-
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
           -Dexec.classpathScope=compile
@@ -89,3 +91,4 @@ jobs:
             target/staging-canary-soak.txt
             target/staging-canary-transport.txt
             target/staging-canary-report.md
+
