@@ -1,0 +1,85 @@
+name: Finalization Smoke V2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  proof-pack-v2:
+    runs-on: ubuntu-latest
+    env:
+      SOAK_DURATION_SECONDS: '120'
+      SOAK_MIN_THROUGHPUT_OPS: '100000'
+      SOAK_SEED: '20260221'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libbenchmark-dev
+
+      - name: Configure CMake
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON
+
+      - name: Build native targets
+        run: cmake --build cpp/build --config Release
+
+      - name: Verify native library exists
+        run: |
+          ls -la cpp/build
+          test -f cpp/build/libpulseengine_native.so
+
+      - name: Compile tests
+        run: mvn -B -DskipTests test-compile
+
+      - name: Run short canary soak (diagnostic)
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: |
+          chmod +x scripts/perf/run_native_soak_ci.sh
+          scripts/perf/run_native_soak_ci.sh \
+            "${SOAK_DURATION_SECONDS}" \
+            "${SOAK_SEED}" \
+            9400 \
+            target/final-canary-soak-v2.txt
+
+      - name: Run transport demo
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: |
+          mkdir -p target
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+            -Dexec.classpathScope=compile \
+            -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo \
+            2>&1 | tee target/final-transport-v2.txt
+
+      - name: Validate canary gates
+        run: >-
+          python3 scripts/perf/validate_canary_v2.py
+          --soak target/final-canary-soak-v2.txt
+          --transport target/final-transport-v2.txt
+          --min-throughput ${{ env.SOAK_MIN_THROUGHPUT_OPS }}
+          --out target/final-canary-report-v2.md
+
+      - name: Upload finalization proof pack v2
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalization-proof-pack-v2
+          path: |
+            target/final-canary-soak-v2.txt
+            target/final-transport-v2.txt
+            target/final-canary-report-v2.md
