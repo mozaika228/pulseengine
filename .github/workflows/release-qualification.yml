@@ -1,0 +1,174 @@
+name: Release Qualification
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      soak_duration_seconds:
+        description: Native soak duration in seconds
+        required: true
+        default: '3600'
+      soak_min_throughput_ops:
+        description: Minimum soak throughput in ops/sec
+        required: true
+        default: '100000'
+      soak_seed:
+        description: Deterministic seed for soak test
+        required: true
+        default: '20260221'
+      max_recovery_sec:
+        description: Max allowed recovery qualification runtime in seconds
+        required: true
+        default: '900'
+
+jobs:
+  release-qualification:
+    runs-on: ubuntu-latest
+    env:
+      SOAK_DURATION_SECONDS: ${{ inputs.soak_duration_seconds || '3600' }}
+      SOAK_MIN_THROUGHPUT_OPS: ${{ inputs.soak_min_throughput_ops || '100000' }}
+      SOAK_SEED: ${{ inputs.soak_seed || '20260221' }}
+      MAX_RECOVERY_SEC: ${{ inputs.max_recovery_sec || '900' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libbenchmark-dev
+
+      - name: Configure CMake
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON
+
+      - name: Build native targets
+        run: cmake --build cpp/build --config Release
+
+      - name: Compile tests
+        run: mvn -B -DskipTests test-compile
+
+      - name: Run JMH core benchmark (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=CoreOrderBookBenchmark.iocCrossingOrder -wi 1 -i 3 -r 1s -f 0 -rf json -rff target/jmh-core-release.json"
+
+      - name: Run JMH pipeline benchmark no-md (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=PipelineBenchmark.iocCrossingOrder -p enableMd=false -wi 1 -i 3 -r 1s -f 0 -rf json -rff target/jmh-pipeline-no-md-release.json"
+
+      - name: Run latency harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.LatencyHarness
+          > target/latency-harness-release.txt
+
+      - name: Run allocation harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.AllocationHarness
+          > target/allocation-harness-release.txt
+
+      - name: Run throughput demo
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.PipelineDemo
+          > target/pipeline-demo-release.txt
+
+      - name: Run Google Benchmark (insert limit)
+        run: |
+          ./cpp/build/order_book_insert_bench \
+            --benchmark_format=json \
+            --benchmark_out=cpp/build/order_book_insert_bench-release.json
+
+      - name: Validate performance gates
+        run: >-
+          python3 scripts/perf/validate_perf.py
+          --jmh-core target/jmh-core-release.json
+          --jmh-pipeline target/jmh-pipeline-no-md-release.json
+          --latency-harness target/latency-harness-release.txt
+          --pipeline-demo target/pipeline-demo-release.txt
+          --allocation-harness target/allocation-harness-release.txt
+          --cpp-bench cpp/build/order_book_insert_bench-release.json
+          --out-report target/perf-regression-report.md
+
+      - name: Run native parity soak
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: |
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+            -Dexec.classpathScope=compile \
+            -Dexec.mainClass=io.pulseengine.app.NativeParitySoakTool \
+            "-Dexec.args=${SOAK_DURATION_SECONDS} ${SOAK_SEED} 9400" > target/native-soak-release.txt
+
+      - name: Validate soak gates
+        run: >-
+          python3 scripts/perf/validate_soak.py
+          --soak target/native-soak-release.txt
+          --min-duration-sec ${{ env.SOAK_DURATION_SECONDS }}
+          --min-throughput-ops ${{ env.SOAK_MIN_THROUGHPUT_OPS }}
+          --out-report target/soak-qualification-report.md
+
+      - name: Run Aeron UDP multicast demo
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo
+          > target/transport-qualification.txt
+
+      - name: Validate transport gates
+        run: >-
+          python3 scripts/perf/validate_transport.py
+          --transport target/transport-qualification.txt
+          --out-report target/transport-qualification-report.md
+
+      - name: Run recovery/parity qualification tests with timing
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: |
+          set -euo pipefail
+          start_ts=$(date +%s)
+          mvn -B -Dtest=CoordinatedRecoveryTest,JournalRecoveryTest,NativeParityFuzzTest,NativeIcebergTest,NativeAbiCompatibilityTest test
+          end_ts=$(date +%s)
+          elapsed=$((end_ts - start_ts))
+          echo "recovery_qualification_sec=${elapsed}" > target/recovery-qualification-metrics.txt
+
+      - name: Build release qualification pack
+        run: >-
+          python3 scripts/perf/validate_release_pack.py
+          --perf-report target/perf-regression-report.md
+          --soak-report target/soak-qualification-report.md
+          --transport-report target/transport-qualification-report.md
+          --recovery-metrics target/recovery-qualification-metrics.txt
+          --max-recovery-sec ${{ env.MAX_RECOVERY_SEC }}
+          --out-report target/release-qualification-report.md
+          --out-pack-dir target/release-qualification-pack
+
+      - name: Upload release qualification pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-qualification-pack
+          path: target/release-qualification-pack/
