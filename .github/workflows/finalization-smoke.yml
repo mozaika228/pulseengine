@@ -1,0 +1,133 @@
+name: Finalization Smoke
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  proof-pack:
+    runs-on: ubuntu-latest
+    env:
+      SOAK_DURATION_SECONDS: '120'
+      SOAK_MIN_THROUGHPUT_OPS: '100000'
+      SOAK_SEED: '20260221'
+      MAX_RECOVERY_SEC: '900'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libbenchmark-dev
+
+      - name: Configure CMake
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release -DPULSEENGINE_BUILD_BENCHMARKS=ON
+
+      - name: Build native targets
+        run: cmake --build cpp/build --config Release
+
+      - name: Compile tests
+        run: mvn -B -DskipTests test-compile
+
+      - name: Run latency harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.LatencyHarness
+          > target/final-latency-harness.txt
+
+      - name: Run allocation harness
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.AllocationHarness
+          > target/final-allocation-harness.txt
+
+      - name: Run throughput demo
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.PipelineDemo
+          > target/final-pipeline-demo.txt
+
+      - name: Run JMH core benchmark (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=CoreOrderBookBenchmark.iocCrossingOrder -wi 0 -i 1 -r 1s -f 0 -rf json -rff target/final-jmh-core.json"
+
+      - name: Run JMH pipeline benchmark (json)
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=test
+          -Dexec.mainClass=org.openjdk.jmh.Main
+          "-Dexec.args=PipelineBenchmark.iocCrossingOrder -p enableMd=false -wi 0 -i 1 -r 1s -f 0 -rf json -rff target/final-jmh-pipeline.json"
+
+      - name: Run Google Benchmark (insert limit)
+        run: |
+          ./cpp/build/order_book_insert_bench \
+            --benchmark_format=json \
+            --benchmark_out=cpp/build/order_book_insert_bench-final.json
+
+      - name: Validate perf report
+        run: >-
+          python3 scripts/perf/validate_perf.py
+          --jmh-core target/final-jmh-core.json
+          --jmh-pipeline target/final-jmh-pipeline.json
+          --latency-harness target/final-latency-harness.txt
+          --pipeline-demo target/final-pipeline-demo.txt
+          --allocation-harness target/final-allocation-harness.txt
+          --cpp-bench cpp/build/order_book_insert_bench-final.json
+          --out-report target/final-perf-regression-report.md
+
+      - name: Run short canary soak
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.NativeParitySoakTool
+          "-Dexec.args=${SOAK_DURATION_SECONDS} ${SOAK_SEED} 9400"
+          > target/final-canary-soak.txt
+
+      - name: Run transport demo
+        env:
+          JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
+        run: >-
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
+          -Dexec.classpathScope=compile
+          -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo
+          > target/final-transport.txt
+
+      - name: Validate canary gates
+        run: >-
+          python3 scripts/perf/validate_canary_v2.py
+          --soak target/final-canary-soak.txt
+          --transport target/final-transport.txt
+          --min-throughput ${{ env.SOAK_MIN_THROUGHPUT_OPS }}
+          --out target/final-canary-report.md
+
+      - name: Upload finalization proof pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalization-proof-pack
+          path: |
+            target/final-perf-regression-report.md
+            target/final-canary-report.md
+            target/final-canary-soak.txt
+            target/final-transport.txt
+            cpp/build/order_book_insert_bench-final.json
