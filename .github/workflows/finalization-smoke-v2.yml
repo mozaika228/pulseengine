@@ -64,6 +64,7 @@ jobs:
           mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
             -Dexec.classpathScope=compile \
             -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo \
+            "-Dexec.args=8 true" \
             2>&1 | tee target/final-transport-v2.txt
 
       - name: Validate canary gates

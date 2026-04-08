@@ -25,8 +25,33 @@ public final class AeronUdpMulticastDemo {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        String ingressChannel = AeronChannels.UDP_INGRESS_UNICAST;
-        String mdChannel = AeronChannels.UDP_MD_MULTICAST;
+        long connectTimeoutSec = args.length > 0 ? Long.parseLong(args[0]) : 5L;
+        boolean allowIpcFallback = args.length > 1 && Boolean.parseBoolean(args[1]);
+
+        try {
+            runDemo(
+                AeronChannels.UDP_INGRESS_UNICAST,
+                AeronChannels.UDP_MD_MULTICAST,
+                "udp_unicast+multicast",
+                connectTimeoutSec
+            );
+        } catch (IllegalStateException e) {
+            if (!allowIpcFallback) {
+                throw e;
+            }
+            System.out.println("aeron_transport_fallback=ipc");
+            System.out.println("aeron_transport_fallback_reason=" + e.getMessage().replace(' ', '_'));
+            runDemo(
+                AeronChannels.IPC_CHANNEL,
+                AeronChannels.IPC_CHANNEL,
+                "ipc_fallback",
+                Math.max(3L, connectTimeoutSec)
+            );
+        }
+    }
+
+    private static void runDemo(String ingressChannel, String mdChannel, String transportLabel, long connectTimeoutSec)
+        throws InterruptedException {
 
         MediaDriver.Context mdCtx = new MediaDriver.Context()
             .dirDeleteOnStart(true)
@@ -75,10 +100,10 @@ public final class AeronUdpMulticastDemo {
                     ingressThread.setDaemon(true);
                     ingressThread.start();
 
-                    long waitDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    long waitDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(connectTimeoutSec);
                     while (!(gateway.isConnected() && orderSub.imageCount() > 0 && aeronMdSink.isConnected() && mdSub.imageCount() > 0)) {
                         if (System.nanoTime() > waitDeadline) {
-                            throw new IllegalStateException("Aeron UDP channels did not connect in time");
+                            throw new IllegalStateException("Aeron channels did not connect in time");
                         }
                         mdSub.poll(mdHandler, 16);
                         Thread.onSpinWait();
@@ -103,10 +128,11 @@ public final class AeronUdpMulticastDemo {
                     running.set(false);
                     ingressThread.join(1000);
 
-                    System.out.println("aeron_transport=udp_unicast+multicast");
+                    System.out.println("aeron_transport=" + transportLabel);
                     System.out.println("aeron_orders_processed=" + (topOfBook.sequence() - startSeq));
                     System.out.println("aeron_md_fragments=" + mdFragments.get());
-                    System.out.println("best_bid=" + topOfBook.bestBid() + " best_ask=" + topOfBook.bestAsk());
+                    System.out.println("best_bid=" + topOfBook.bestBid());
+                    System.out.println("best_ask=" + topOfBook.bestAsk());
                 }
             }
         }

@@ -7,9 +7,9 @@ from pathlib import Path
 
 def parse_key_values(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
+    pair_re = re.compile(r"([A-Za-z0-9_]+)\s*=\s*([^\s]+)")
     for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^\s*([A-Za-z0-9_]+)\s*=\s*(.+?)\s*$", line)
-        if match:
+        for match in pair_re.finditer(line):
             values[match.group(1)] = match.group(2)
     return values
 

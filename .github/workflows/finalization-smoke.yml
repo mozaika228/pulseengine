@@ -106,11 +106,13 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Djava.library.path=${{ github.workspace }}/cpp/build
           LD_LIBRARY_PATH: ${{ github.workspace }}/cpp/build
-        run: >-
-          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java
-          -Dexec.classpathScope=compile
-          -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo
-          > target/final-transport.txt
+        run: |
+          mkdir -p target
+          mvn -B org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+            -Dexec.classpathScope=compile \
+            -Dexec.mainClass=io.pulseengine.app.AeronUdpMulticastDemo \
+            "-Dexec.args=8 true" \
+            2>&1 | tee target/final-transport.txt
 
       - name: Validate canary gates
         run: >-
