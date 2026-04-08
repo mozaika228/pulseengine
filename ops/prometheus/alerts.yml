@@ -1,0 +1,38 @@
+groups:
+  - name: pulseengine-health
+    rules:
+      - alert: PulseEngineParityDriftDetected
+        expr: pulseengine_parity_drift_total > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Parity drift detected"
+          description: "Native/Java parity drift metric is non-zero."
+
+      - alert: PulseEngineBackpressureHigh
+        expr: pulseengine_backpressure_rejects_total > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backpressure rejects observed"
+          description: "Transport ingress is rejecting due to saturation."
+
+      - alert: PulseEngineReplayLagHigh
+        expr: pulseengine_replay_lag_records > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replay lag is high"
+          description: "Recovery replay lag exceeded threshold."
+
+      - alert: PulseEngineCanaryThroughputLow
+        expr: pulseengine_soak_throughput_ops < 100000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Canary throughput below floor"
+          description: "Observed soak throughput is below expected minimum."
