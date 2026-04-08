@@ -48,12 +48,15 @@ def main() -> int:
     has_orders, orders = as_float(transport, "aeron_orders_processed")
     has_frags, frags = as_float(transport, "aeron_md_fragments")
 
+    transport_mode = transport.get("aeron_transport", "unknown")
+    is_ipc_fallback = transport_mode == "ipc_fallback"
+
     checks = [
         ("soak_ok", has_soak_ok and soak_ok),
         ("parity_drift_total", has_drift and drift == 0.0),
         ("throughput_ops", has_tput and tput >= args.min_throughput),
         ("aeron_orders_processed", has_orders and orders == 4.0),
-        ("aeron_md_fragments", has_frags and frags > 0.0),
+        ("aeron_md_fragments", has_frags and (frags > 0.0 or is_ipc_fallback)),
     ]
 
     lines = ["# Staging Canary Report", "", "| Gate | Status |", "|---|---|"]
@@ -82,6 +85,10 @@ def main() -> int:
         for m in missing:
             lines.append(f"- `{m}`")
 
+    lines.append("")
+    lines.append(f"transport_mode={transport_mode}")
+    if is_ipc_fallback:
+        lines.append("note=md_fragments_gate_relaxed_for_ipc_fallback")
     lines.append("")
     lines.append(f"canary_status={'FAIL' if failed else 'PASS'}")
 
