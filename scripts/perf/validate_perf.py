@@ -53,6 +53,19 @@ def load_cpp_insert_score(path: Path) -> float:
     return max(values)
 
 
+def check(name: str, value: float | None, op: str, threshold: float) -> tuple[str, float | None, str, float, bool]:
+    if value is None:
+        return name, None, op, threshold, False
+    ok = (value <= threshold) if op == "<=" else (value >= threshold)
+    return name, value, op, threshold, ok
+
+
+def fmt_value(value: float | None) -> str:
+    if value is None:
+        return "missing"
+    return f"{value:.2f}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jmh-core", required=True, type=Path)
@@ -78,40 +91,34 @@ def main() -> int:
     core_alloc = allocation.get("core_alloc_bytes_per_op")
     pipeline_alloc = allocation.get("pipeline_core_alloc_bytes_per_op")
 
-    missing = []
-    for key, value in [
-        ("latency_ns_p50", p50),
-        ("latency_ns_p99", p99),
-        ("latency_ns_p9999", p9999),
-        ("throughput_ops", throughput),
-        ("core_alloc_bytes_per_op", core_alloc),
-        ("pipeline_core_alloc_bytes_per_op", pipeline_alloc),
-    ]:
-        if value is None:
-            missing.append(key)
-    if missing:
-        raise RuntimeError(f"missing metrics in outputs: {', '.join(missing)}")
-
     checks = [
-        ("jmh_core_mean_ns", jmh_core, "<=", THRESHOLDS["jmh_core_mean_ns_max"]),
-        ("jmh_pipeline_mean_ns", jmh_pipeline, "<=", THRESHOLDS["jmh_pipeline_mean_ns_max"]),
-        ("latency_p50_ns", p50, "<=", THRESHOLDS["latency_p50_ns_max"]),
-        ("latency_p99_ns", p99, "<=", THRESHOLDS["latency_p99_ns_max"]),
-        ("latency_p9999_ns", p9999, "<=", THRESHOLDS["latency_p9999_ns_max"]),
-        ("pipeline_throughput_ops", throughput, ">=", THRESHOLDS["pipeline_throughput_ops_min"]),
-        ("core_alloc_bytes_per_op", core_alloc, "<=", THRESHOLDS["core_alloc_bytes_per_op_max"]),
-        ("pipeline_core_alloc_bytes_per_op", pipeline_alloc, "<=", THRESHOLDS["pipeline_core_alloc_bytes_per_op_max"]),
-        ("cpp_insert_ns", cpp_insert, "<=", THRESHOLDS["cpp_insert_ns_max"]),
+        check("jmh_core_mean_ns", jmh_core, "<=", THRESHOLDS["jmh_core_mean_ns_max"]),
+        check("jmh_pipeline_mean_ns", jmh_pipeline, "<=", THRESHOLDS["jmh_pipeline_mean_ns_max"]),
+        check("latency_p50_ns", p50, "<=", THRESHOLDS["latency_p50_ns_max"]),
+        check("latency_p99_ns", p99, "<=", THRESHOLDS["latency_p99_ns_max"]),
+        check("latency_p9999_ns", p9999, "<=", THRESHOLDS["latency_p9999_ns_max"]),
+        check("pipeline_throughput_ops", throughput, ">=", THRESHOLDS["pipeline_throughput_ops_min"]),
+        check("core_alloc_bytes_per_op", core_alloc, "<=", THRESHOLDS["core_alloc_bytes_per_op_max"]),
+        check("pipeline_core_alloc_bytes_per_op", pipeline_alloc, "<=", THRESHOLDS["pipeline_core_alloc_bytes_per_op_max"]),
+        check("cpp_insert_ns", cpp_insert, "<=", THRESHOLDS["cpp_insert_ns_max"]),
     ]
 
     lines = ["# Performance Regression Report", "", "| Metric | Value | Threshold | Status |", "|---|---:|---:|---|"]
     failed = False
-    for name, value, op, threshold in checks:
-        ok = (value <= threshold) if op == "<=" else (value >= threshold)
+    missing = []
+    for name, value, op, threshold, ok in checks:
         status = "PASS" if ok else "FAIL"
-        lines.append(f"| `{name}` | `{value:.2f}` | `{op} {threshold:.2f}` | **{status}** |")
+        lines.append(f"| `{name}` | `{fmt_value(value)}` | `{op} {threshold:.2f}` | **{status}** |")
+        if value is None:
+            missing.append(name)
         if not ok:
             failed = True
+
+    if missing:
+        lines.append("")
+        lines.append("Missing metrics:")
+        for metric in missing:
+            lines.append(f"- `{metric}`")
 
     args.out_report.parent.mkdir(parents=True, exist_ok=True)
     args.out_report.write_text("\n".join(lines) + "\n", encoding="utf-8")
