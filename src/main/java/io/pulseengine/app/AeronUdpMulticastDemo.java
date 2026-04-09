@@ -121,7 +121,15 @@ public final class AeronUdpMulticastDemo {
                         Thread.onSpinWait();
                     }
 
-                    for (int i = 0; i < 200; i++) {
+                    long mdDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                    while (mdFragments.get() == 0 && System.nanoTime() < mdDeadline) {
+                        int fragments = mdSub.poll(mdHandler, 64);
+                        if (fragments == 0) {
+                            Thread.onSpinWait();
+                        }
+                    }
+
+                    for (int i = 0; i < 64; i++) {
                         mdSub.poll(mdHandler, 64);
                     }
 
@@ -172,3 +180,4 @@ public final class AeronUdpMulticastDemo {
         }
     }
 }
+
