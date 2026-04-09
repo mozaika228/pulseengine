@@ -29,8 +29,9 @@ def load_jmh_score(path: Path) -> float:
 
 def parse_key_value_text(path: Path) -> dict[str, float]:
     out: dict[str, float] = {}
+    number_pattern = r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?"
     for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^\s*([A-Za-z0-9_]+)\s*=\s*([-+]?[0-9]*\.?[0-9]+)\s*$", line)
+        m = re.match(rf"^\s*([A-Za-z0-9_]+)\s*=\s*({number_pattern})\s*$", line)
         if m:
             out[m.group(1)] = float(m.group(2))
     return out
@@ -128,3 +129,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
