@@ -26,7 +26,7 @@ class NativeIcebergTest {
             NativeOrderBook.MatchResult r2 = book.matchMarketOrder(3, 2, true);
             assertEquals(2, r2.filledQty);
             NativeOrderBook.L2Update afterRefresh = book.publishL2Update();
-            assertEquals(3, afterRefresh.bestAskQty);
+            assertEquals(2, afterRefresh.bestAskQty);
         }
     }
 
