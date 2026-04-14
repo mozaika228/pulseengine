@@ -5,14 +5,30 @@
 [![Coverage](https://codecov.io/gh/mozaika228/pulseengine/graph/badge.svg)](https://codecov.io/gh/mozaika228/pulseengine)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-In-process single-symbol matching core for Java 21 with a staged Disruptor pipeline.
+> Low-latency matching engine for high-frequency trading (HFT)
+
+PulseEngine is a production-ready, in-process matching engine designed for ultra-fast order execution and deterministic behavior in latency-critical systems.
+
+Built with Java 21 + JNI/C++ and powered by a staged Disruptor pipeline.
+
+## Why PulseEngine?
+- Microsecond-level latency for order matching
+- Deterministic execution with strict capacity control
+- Production-ready recovery: snapshot + journal + replay
+- Native C++ hot path via JNI for maximum performance
+- Fully gated CI with performance, soak, and transport validation
+
+## How it works (simplified)
+Order flow:
+
+Ingress -> Risk -> Matching -> Market Data -> Journal
 
 ## Maturity
-- Current release line: `1.0.0`
+- Current release line: `1.0.2`
 - CI, unit tests, coverage, and JMH automation are enabled.
 
 ## Production Status Statement
-PulseEngine `1.0.0` is production-ready for single-symbol in-process deployment with gated CI qualification.
+PulseEngine `1.0.2` is production-ready for single-symbol in-process deployment with gated CI qualification.
 
 Included in release scope:
 - deterministic matching core (Java + JNI/C++) with explicit capacity rejects
@@ -24,7 +40,16 @@ Included in release scope:
 Current boundary:
 - single-symbol engine profile; horizontal scale is achieved by symbol sharding across engine instances.
 
+## Performance
+PulseEngine is optimized for ultra-low latency matching:
+
+- ~143 ns per operation on the Java path (`NativeVsJavaBenchmark.javaOrderBookMarketMatch`, JMH)
+- native path integrated through JNI and tuned for lower latency under production qualification gates
+
+Designed for environments where every microsecond matters.
+
 ## Implemented now
+### Matching
 - price-time priority matching (single symbol)
 - limit, market, stop-market orders
 - TIF: GTC, IOC, FOK
@@ -32,27 +57,31 @@ Current boundary:
 - SMP policy: cancel aggressor
 - optional iceberg (`peakSize` in `OrderRequest`)
 - fixed-capacity price ladders + preallocated order/stop pools in Java matching core (no TreeMap/ArrayDeque in the hot path)
+
+### Pipeline
 - staged pipeline: `risk -> match -> market-data` on LMAX Disruptor
 - market data can run async on a dedicated ring/thread (`match -> md`) with L2 batching per batch boundary
 - non-blocking submit APIs are available (`trySubmit*`) to support wait-free/backpressure-aware ingress
 - top-of-book view (`TopOfBookView`) updated by market-data stage
-- binary market-data publisher (SBE schema-driven):
-  - snapshot L2 message
-  - incremental L2 delta message (only on change)
-  - snapshot L2 depth-N message (periodic + initial)
-  - incremental L3 message (`add/modify/cancel/trade`)
-- latency harness (`LatencyHarness`)
-- throughput demo (`PipelineDemo`)
-- binary feed demo with decoder (`BinaryFeedDemo`)
+
+### Market Data
+- binary market-data publisher (SBE schema-driven)
+- snapshot L2 message
+- incremental L2 delta message (only on change)
+- snapshot L2 depth-N message (periodic + initial)
+- incremental L3 message (`add/modify/cancel/trade`)
 - Aeron IPC transport demo (`AeronIpcDemo`) for order ingress and market-data dissemination
 - Aeron UDP transport profile demo (`AeronUdpMulticastDemo`) for unicast ingress + multicast market data
+
+### Recovery
 - append-only command journal and replay utility (`JournalReplayDemo`)
 - journal integrity tooling with CRC32 verification/repair (`JournalRecoveryTool`)
 - full order-book state snapshotting with checksum validation and fast restore APIs (`saveStateSnapshot/loadStateSnapshot`)
 - coordinated recovery tooling: snapshot + journal checkpoint + incremental catch-up replay
+
+### Native
 - JNI bridge for native C++ matching hot path (`NativeOrderBook`)
 - JNI ingress adapter for Java pipeline integration (`NativeIngressAdapter`)
-
 ## Run
 - `mvn -q -DskipTests=false verify`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.LatencyHarness"`
@@ -137,6 +166,9 @@ Current boundary:
 - Java and native matching paths run on fixed-capacity hot-path structures with explicit overflow rejects.
 - Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, transport qualification, and staging canary checks.
 - Release publication is gated by qualification status and private advisory security policy is enforced.
+
+
+
 
 
 
