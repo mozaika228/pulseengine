@@ -5,18 +5,22 @@
 [![Coverage](https://codecov.io/gh/mozaika228/pulseengine/graph/badge.svg)](https://codecov.io/gh/mozaika228/pulseengine)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> Low-latency matching engine for high-frequency trading (HFT)
+> Production-ready HFT matching engine with nanosecond-class execution and deterministic recovery.
 
-PulseEngine is a production-ready, in-process matching engine designed for ultra-fast order execution and deterministic behavior in latency-critical systems.
+PulseEngine is built for teams that need exchange-style matching behavior without starting from a research prototype.
 
-Built with Java 21 + JNI/C++ and powered by a staged Disruptor pipeline.
+## At a glance
+- `~143 ns/op` Java matching path (`NativeVsJavaBenchmark.javaOrderBookMarketMatch`, JMH)
+- `~6.49M ops/s` pipeline throughput (qualification harness)
+- `p99.99 ~10.9 us` latency in final smoke profile
+- journal + CRC + replay + snapshot/restore + coordinated catch-up
+- JNI/C++ native hot path with ABI compatibility checks
 
 ## Why PulseEngine?
-- Microsecond-level latency for order matching
-- Deterministic execution with strict capacity control
-- Production-ready recovery: snapshot + journal + replay
-- Native C++ hot path via JNI for maximum performance
-- Fully gated CI with performance, soak, and transport validation
+- Fast by default: low-latency matching path with fixed-capacity structures
+- Predictable under load: explicit overflow/reject behavior instead of silent degradation
+- Recovery-ready: restart-safe state restoration and replay tooling included
+- Qualification-gated: perf, soak, recovery, and transport checks are release blockers
 
 ## How it works (simplified)
 Order flow:
@@ -82,6 +86,7 @@ Designed for environments where every microsecond matters.
 ### Native
 - JNI bridge for native C++ matching hot path (`NativeOrderBook`)
 - JNI ingress adapter for Java pipeline integration (`NativeIngressAdapter`)
+
 ## Run
 - `mvn -q -DskipTests=false verify`
 - `mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java "-Dexec.classpathScope=compile" "-Dexec.mainClass=io.pulseengine.app.LatencyHarness"`
@@ -166,6 +171,9 @@ Designed for environments where every microsecond matters.
 - Java and native matching paths run on fixed-capacity hot-path structures with explicit overflow rejects.
 - Blocking CI gates cover latency, throughput, allocation-rate, native benchmark regressions, soak parity, recovery, transport qualification, and staging canary checks.
 - Release publication is gated by qualification status and private advisory security policy is enforced.
+
+
+
 
 
 
