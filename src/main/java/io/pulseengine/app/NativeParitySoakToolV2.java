@@ -3,6 +3,7 @@ package io.pulseengine.app;
 import io.pulseengine.core.MatchEventSink;
 import io.pulseengine.core.OrderBook;
 import io.pulseengine.core.OrderRequest;
+import io.pulseengine.core.RejectCode;
 import io.pulseengine.core.Side;
 import io.pulseengine.core.SmpPolicy;
 import io.pulseengine.core.TimeInForce;
@@ -32,7 +33,7 @@ public final class NativeParitySoakToolV2 {
         }
 
         Random random = new Random(seed);
-        OrderBook javaBook = new OrderBook();
+        OrderBook javaBook = new OrderBook(maxLevels, maxOrders, Math.max(65_536, maxOrders));
         TrackingSink sink = new TrackingSink();
         long startNs = System.nanoTime();
         long deadline = startNs + Duration.ofSeconds(seconds).toNanos();
@@ -56,6 +57,7 @@ public final class NativeParitySoakToolV2 {
                 long qty = 1 + random.nextInt(20);
 
                 if (isLimit) {
+                    sink.beginLimitInsert();
                     long price = isBuy
                         ? (49_850 + random.nextInt(51))
                         : (50_100 + random.nextInt(51));
@@ -80,6 +82,10 @@ public final class NativeParitySoakToolV2 {
                                 ops + 1
                             );
                         }
+                    }
+
+                    if (status == NativeOrderBook.INSERT_OK && sink.wasCapacityRejected()) {
+                        throw new IllegalStateException("Capacity mismatch: java rejected accepted-native limit orderId=" + orderId + " op=" + ops);
                     }
 
                     if (status != NativeOrderBook.INSERT_OK) {
@@ -146,10 +152,19 @@ public final class NativeParitySoakToolV2 {
     private static final class TrackingSink implements MatchEventSink {
         private long activeAggressorOrderId = -1;
         private long activeAggressorFilledQty = 0;
+        private boolean sawCapacityReject;
 
         void beginAggressor(long orderId) {
             activeAggressorOrderId = orderId;
             activeAggressorFilledQty = 0;
+        }
+
+        void beginLimitInsert() {
+            sawCapacityReject = false;
+        }
+
+        boolean wasCapacityRejected() {
+            return sawCapacityReject;
         }
 
         long endAggressorAndGetFilled() {
@@ -172,6 +187,9 @@ public final class NativeParitySoakToolV2 {
 
         @Override
         public void onOrderRejected(long orderId, byte reasonCode, long tsNanos) {
+            if (reasonCode == RejectCode.CAPACITY_EXCEEDED) {
+                sawCapacityReject = true;
+            }
         }
 
         @Override
