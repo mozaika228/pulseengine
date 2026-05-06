@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to release (example: v0.2.1)
+        description: "Tag to release (example: v0.2.1)"
         required: true
       soak_duration_seconds:
         description: Native soak duration in seconds
@@ -214,4 +214,5 @@ jobs:
             Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
             Artifact: release-qualification-pack
             Report file: release-qualification-report.md
+
 
